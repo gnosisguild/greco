@@ -1,6 +1,7 @@
 import os
 from bfv.crt import CRTModuli
 from bfv.bfv import BFVCrt
+from bfv.bfv import BFV
 from bfv.discrete_gauss import DiscreteGaussian
 from bfv.polynomial import Polynomial, poly_div
 from random import randint
@@ -8,6 +9,7 @@ import copy
 from utils import assign_to_circuit, count_advice_cells_needed_for_poly_range_check, print_advice_cells_info
 import argparse
 import json
+import numpy as np
 
 def main(args): 
     
@@ -33,8 +35,21 @@ def main(args):
         ais.append(bfv_crt.bfv_qis[i].rlwe.Rq.sample_polynomial())
 
     m = bfv_crt.bfv_q.rlwe.Rt.sample_polynomial()
+    #m.coefficients = np.concatenate((np.zeros(n - len(m.coefficients)), m.coefficients))
+
 
     ctis = bfv_crt.SecretKeyEncrypt(s, ais, e, m)
+
+    pk_ctis = bfv_crt.PublicKeyGen(s,e,ais)
+
+    u = bfv_crt.bfv_q.rlwe.SampleFromTernaryDistribution()
+    u.coefficients = u.coefficients = [0] * (n - len(u.coefficients)) + u.coefficients
+
+    e0 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
+    e1 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
+
+    #pk_cipertext =  bfv_crt.PubKeyEncrypt(pk_ctis,m,e0,e1,u)
+
 
     # Sanity check for valid decryption    
     message_prime = bfv_crt.Decrypt(s, ctis)
@@ -411,7 +426,7 @@ def main(args):
     # Construct the dynamic filename
     filename = f"sk_enc_{args.n}_{qis_len}x{qis_bitsize}_{args.t}.json"
 
-    output_path = os.path.join("src", "data", filename)
+    output_path = os.path.join("src", "data", "sk_enc_data",filename)
 
     with open(output_path, 'w') as f:
         json.dump(json_input, f)
@@ -427,7 +442,7 @@ def main(args):
         "ct0is": [["0" for _ in ct0i_in_p.coefficients] for ct0i_in_p in ct0is_in_p],
     }
 
-    output_path = os.path.join("src", "data", f"sk_enc_{args.n}_{qis_len}x{qis_bitsize}_{args.t}_zeroes.json")
+    output_path = os.path.join("src", "data","sk_enc_data", f"sk_enc_{args.n}_{qis_len}x{qis_bitsize}_{args.t}_zeroes.json")
 
     with open(output_path, 'w') as f:
         json.dump(json_input_zeroes, f)

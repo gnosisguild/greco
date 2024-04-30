@@ -283,3 +283,77 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         */
     }
 }
+#[cfg(test)]
+mod test {
+
+    use std::{fs::File, io::Read};
+
+    use axiom_eth::{
+        halo2_proofs::plonk::{keygen_pk, keygen_pk2, keygen_vk},
+        halo2curves::bn256::Fr,
+        rlc::{circuit::builder::RlcCircuitBuilder, utils::executor::RlcExecutor},
+    };
+    use halo2_base::{
+        gates::circuit::CircuitBuilderStage,
+        utils::{
+            fs::gen_srs,
+            testing::{check_proof, gen_proof},
+        },
+    };
+
+    use super::{test_params, BfvPkEncryptionCircuit};
+
+    #[test]
+    fn test_pk_enc_valid() {
+        let file_path_zeros = "src/data/pk_enc_data/pk_enc_1024_zeros.json";
+        let mut file = File::open(file_path_zeros).unwrap();
+        let mut data = String::new();
+        file.read_to_string(&mut data).unwrap();
+        let empty_pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+
+        // 2. Generate (unsafe) trusted setup parameters
+        // Here we are setting a small k for optimization purposes
+        let k = 14;
+        let kzg_params = gen_srs(k as u32);
+
+        // 3. Build the circuit for key generation,
+        let mut key_gen_builder =
+            RlcCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k);
+        key_gen_builder.base.set_lookup_bits(k - 1); // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
+
+        let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
+
+        // The parameters are auto configured by halo2 lib to fit all the columns into the `k`-sized table
+        let rlc_circuit_params = rlc_circuit.0.calculate_params(Some(9));
+
+        // 4. Generate the verification key and the proving key
+        let vk = keygen_vk(&kzg_params, &rlc_circuit).unwrap();
+        let pk = keygen_pk(&kzg_params, vk, &rlc_circuit).unwrap();
+        let break_points = rlc_circuit.0.builder.borrow().break_points();
+        drop(rlc_circuit);
+
+        // 5. Generate the proof, here we pass the actual inputs
+        let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
+            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
+                .use_params(rlc_circuit_params);
+        proof_gen_builder.base.set_lookup_bits(k - 1);
+
+        let file_path = "src/data/pk_enc_data/pk_enc_1024.json";
+        let mut file = File::open(file_path).unwrap();
+        let mut data = String::new();
+        file.read_to_string(&mut data).unwrap();
+        let sk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+
+        let rlc_circuit = RlcExecutor::new(proof_gen_builder, sk_enc_circuit.clone());
+
+        rlc_circuit
+            .0
+            .builder
+            .borrow_mut()
+            .set_break_points(break_points);
+        let proof = gen_proof(&kzg_params, &pk, rlc_circuit);
+
+        // 6. Verify the proof
+        check_proof(&kzg_params, pk.get_vk(), &proof, true);
+    }
+}
