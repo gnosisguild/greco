@@ -1,4 +1,4 @@
-use crate::constants::sk_enc_constants_4096_2x55_65537::{
+use crate::constants::sk_enc_constants::sk_enc_constants_4096_2x55_65537::{
     E_BOUND, K0IS, K1_BOUND, N, QIS, R1_BOUNDS, R2_BOUNDS, S_BOUND,
 };
 use crate::poly::{Poly, PolyAssigned};
@@ -266,7 +266,7 @@ mod test {
 
     use super::test_params;
     use crate::{
-        constants::sk_enc_constants_4096_2x55_65537::R1_BOUNDS,
+        constants::sk_enc_constants::sk_enc_constants_4096_2x55_65537::R1_BOUNDS,
         sk_encryption_circuit::BfvSkEncryptionCircuit,
     };
     use axiom_eth::rlc::{

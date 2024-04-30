@@ -10,7 +10,7 @@ use halo2_base::{
 use serde::Deserialize;
 
 use crate::{
-    constants::{
+    constants::sk_enc_constants::{
         sk_enc_constants_1024_1x27_65537::S_BOUND,
         sk_enc_constants_4096_2x55_65537::{E_BOUND, K0IS, K1_BOUND, N, QIS, R1_BOUNDS, R2_BOUNDS},
     },
@@ -47,8 +47,10 @@ pub fn test_params() -> RlcCircuitParams {
 #[derive(Deserialize, Clone)]
 pub struct BfvPkEncryptionCircuit {
     pk0_qi: Vec<String>,
+    //pk1_q1:Vec<String>,
     u: Vec<String>,
     e0: Vec<String>,
+    //e1: Vec<String>,
     k1: Vec<String>,
     r2is: Vec<Vec<String>>,
     r1is: Vec<Vec<String>>,
@@ -58,8 +60,10 @@ pub struct BfvPkEncryptionCircuit {
 /// Payload returned by the first phase of the circuit to be reused in the second phase
 pub struct Payload<F: ScalarField> {
     pk0_qi_assigned: PolyAssigned<F>,
+    //pk1_qi_assigned: PolyAssigned<F>,
     u_assigned: PolyAssigned<F>,
     e0_assigned: PolyAssigned<F>,
+    //e1_assigned: PolyAssigned<F>,
     k1_assigned: PolyAssigned<F>,
     r2is_assigned: Vec<PolyAssigned<F>>,
     r1is_assigned: Vec<PolyAssigned<F>>,
@@ -90,11 +94,17 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let pk0_qi = Poly::<F>::new(self.pk0_qi.clone());
         let pk0_qi_assigned = PolyAssigned::new(ctx, pk0_qi);
 
+        // let pk1_qi = Poly::<F>::new(self.pk1_qi.clone());
+        // let pk1_qi_assigned = PolyAssigned::new(ctx, pk1_qi);
+
         let u = Poly::<F>::new(self.u.clone());
         let u_assigned = PolyAssigned::new(ctx, u);
 
         let e0 = Poly::<F>::new(self.e0.clone());
         let e0_assigned = PolyAssigned::new(ctx, e0);
+
+        // let e1 = Poly::<F>::new(self.e1.clone());
+        // let e1_assigned = PolyAssigned::new(ctx, e1);
 
         let k1 = Poly::<F>::new(self.k1.clone());
         let k1_assigned = PolyAssigned::new(ctx, k1);
@@ -175,6 +185,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     ) {
         let Payload {
             pk0_qi_assigned,
+            // pk1_qi_assigned
             u_assigned,
             e0_assigned,
             k1_assigned,
@@ -252,5 +263,23 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             let res = gate.is_equal(ctx_gate, lhs, rhs);
             gate.assert_is_const(ctx_gate, &res, &F::from(1));
         }
+
+        //TODO:Optimize this step by removing the repeatitive code and combine them into one loop
+        //rhs = pk1_qi(gamma) * u(gamma) + e1(gamma)
+        //    let rhs = gate.mul_add(ctx_gate,pk1_qi_at_gamma , u_at_gamma, e1_at_gamma);
+
+        /*for z in 0..ct1is.len() {
+            rhs= cyclo(gamma) * p2_i(gamma) + rhs
+            let rhs = gate.mul_add(ctx_gate,cyclo_at_gamma_assigned,p2_i_assigned_at_gamma[z],rhs)
+            rhs = qi(gamma) * p1_i(gamma) + rhs
+            let rhs = gate.mul_add(ctx_gate,qi_at_gamma[z],p1_i_assigned_at_gamma[z],rhs);
+            let lhs = ct1is_at_gamma_assigned[z];
+            // LHS(gamma) = RHS(gamma)
+            let res = gate.is_equal(ctx_gate, lhs, rhs);
+            gate.assert_is_const(ctx_gate, &res, &F::from(1));
+        }
+
+
+        */
     }
 }
