@@ -11,6 +11,9 @@ import argparse
 import json
 import numpy as np
 
+
+
+
 def main(args): 
     
     '''
@@ -35,25 +38,12 @@ def main(args):
         ais.append(bfv_crt.bfv_qis[i].rlwe.Rq.sample_polynomial())
 
     m = bfv_crt.bfv_q.rlwe.Rt.sample_polynomial()
-    #m.coefficients = np.concatenate((np.zeros(n - len(m.coefficients)), m.coefficients))
-
 
     ctis = bfv_crt.SecretKeyEncrypt(s, ais, e, m)
 
-    pk_ctis = bfv_crt.PublicKeyGen(s,e,ais)
-
-    u = bfv_crt.bfv_q.rlwe.SampleFromTernaryDistribution()
-    u.coefficients = u.coefficients = [0] * (n - len(u.coefficients)) + u.coefficients
-
-    e0 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
-    e1 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
-
-    #pk_cipertext =  bfv_crt.PubKeyEncrypt(pk_ctis,m,e0,e1,u)
-
-
-    # Sanity check for valid decryption    
+    # Sanity check for valid decryption
     message_prime = bfv_crt.Decrypt(s, ctis)
-
+        
     assert m == message_prime
 
     # k1 = [QM]t namely the scaled message polynomial
@@ -447,7 +437,7 @@ def main(args):
     with open(output_path, 'w') as f:
         json.dump(json_input_zeroes, f)
 
-    output_path = os.path.join("src", "constants", f"sk_enc_constants_{args.n}_{qis_len}x{qis_bitsize}_{args.t}.rs")
+    output_path = os.path.join("src", "constants","sk_enc_constants", f"sk_enc_constants_{args.n}_{qis_len}x{qis_bitsize}_{args.t}.rs")
 
     with open(output_path, 'w') as f:
         f.write(f"/// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.\n")

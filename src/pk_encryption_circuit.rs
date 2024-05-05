@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     constants::sk_enc_constants::{
-        sk_enc_constants_1024_1x27_65537::S_BOUND,
+        sk_enc_constants_4096_2x55_65537::S_BOUND,
         sk_enc_constants_4096_2x55_65537::{E_BOUND, K0IS, K1_BOUND, N, QIS, R1_BOUNDS, R2_BOUNDS},
     },
     poly::{Poly, PolyAssigned},
@@ -46,7 +46,7 @@ pub fn test_params() -> RlcCircuitParams {
 
 #[derive(Deserialize, Clone)]
 pub struct BfvPkEncryptionCircuit {
-    pk0_qi: Vec<String>,
+    pk0_qi: Vec<Vec<String>>,
     //pk1_q1:Vec<String>,
     u: Vec<String>,
     e0: Vec<String>,
@@ -59,7 +59,7 @@ pub struct BfvPkEncryptionCircuit {
 
 /// Payload returned by the first phase of the circuit to be reused in the second phase
 pub struct Payload<F: ScalarField> {
-    pk0_qi_assigned: PolyAssigned<F>,
+    pk0_qi_assigned: Vec<PolyAssigned<F>>,
     //pk1_qi_assigned: PolyAssigned<F>,
     u_assigned: PolyAssigned<F>,
     e0_assigned: PolyAssigned<F>,
@@ -91,8 +91,15 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     ) -> Self::FirstPhasePayload {
         let ctx = builder.base.main(0);
 
-        let pk0_qi = Poly::<F>::new(self.pk0_qi.clone());
-        let pk0_qi_assigned = PolyAssigned::new(ctx, pk0_qi);
+        let pk0_qi = self
+            .pk0_qi
+            .iter()
+            .map(|pk0_qi| Poly::<F>::new(pk0_qi.clone()))
+            .collect::<Vec<_>>();
+        let pk0_qi_assigned = pk0_qi
+            .into_iter()
+            .map(|pk0_qi| PolyAssigned::new(ctx, pk0_qi))
+            .collect::<Vec<_>>();
 
         // let pk1_qi = Poly::<F>::new(self.pk1_qi.clone());
         // let pk1_qi_assigned = PolyAssigned::new(ctx, pk1_qi);
@@ -232,7 +239,10 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let u_at_gamma = u_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
         let e0_at_gamma = e0_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
         let k1_at_gamma = k1_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
-        let pk0_qi_at_gamma = pk0_qi_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
+        let pk0_qi_at_gamma = pk0_qi_assigned
+            .iter()
+            .map(|pk_assigned| pk_assigned.enforce_eval_at_gamma(ctx_rlc, rlc))
+            .collect::<Vec<_>>();
 
         let gate = range.gate();
 
@@ -241,9 +251,8 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         // LHS = ct0i(gamma)
         // RHS = pk_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
 
-        let pk_u = gate.mul_add(ctx_gate, pk0_qi_at_gamma, u_at_gamma, e0_at_gamma);
-
         for z in 0..ct0is.len() {
+            let pk_u = gate.mul_add(ctx_gate, pk0_qi_at_gamma[z], u_at_gamma, e0_at_gamma);
             let r1i_at_gamma = r1is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
             let r2i_at_gamma = r2is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
 
@@ -305,11 +314,12 @@ mod test {
 
     #[test]
     fn test_pk_enc_valid() {
-        let file_path_zeros = "src/data/pk_enc_data/pk_enc_1024_zeros.json";
+        let file_path_zeros = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
         let mut file = File::open(file_path_zeros).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let empty_pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+        println!("fetched succefully");
 
         // 2. Generate (unsafe) trusted setup parameters
         // Here we are setting a small k for optimization purposes
@@ -338,7 +348,7 @@ mod test {
                 .use_params(rlc_circuit_params);
         proof_gen_builder.base.set_lookup_bits(k - 1);
 
-        let file_path = "src/data/pk_enc_data/pk_enc_1024.json";
+        let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
