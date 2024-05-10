@@ -292,10 +292,11 @@ def main(args):
 
         # sanity check. The coefficients of ai * s + e should be in the range $- (N \cdot \frac{q_i - 1}{2} + B), N \cdot \frac{q_i - 1}{2} + B]$
         bound = int((qis[i] - 1) / 2) * n + b
-        res = ais[i] * s + e
+        print(f" sk r2 bound = {bound}")
+        res = Polynomial(ais[i]) * s + e
         assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
 
-        # constraint. The coefficients of r2i should be in the range [-(qi-1)/2, (qi-1)/2]
+        # constraint. The coefficients of r`2i should be in the range [-(qi-1)/2, (qi-1)/2]
         r2i_bound = int((qis[i] - 1) / 2)
         r2_bounds.append(r2i_bound)
         assert all(coeff >= -r2i_bound and coeff <= r2i_bound for coeff in r2is[i].coefficients)

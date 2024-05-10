@@ -210,7 +210,6 @@ def main(args):
     e0_assigned = assign_to_circuit(e0, p)
     k1_assigned = assign_to_circuit(k1, p)
     u_assigned = assign_to_circuit(u,p)
-    print(f"pk0is length = {len(pk0i_assigned)} ")
 
     phase_0_assignment_advice_cell_count += len(e0_assigned.coefficients)
     phase_0_assignment_advice_cell_count += len(u_assigned.coefficients)
@@ -277,9 +276,7 @@ def main(args):
     b = int(discrete_gaussian.z_upper)
     assert all(coeff >= -b and coeff <= b for coeff in e.coefficients)
    
-
-   
-    
+ 
     # constraint. The coefficients of e should be in the range [-B, B] where B is the upper bound of the discrete Gaussian distribution
     
     # After the circuit assignement, the coefficients of e_assigned must be in [0, B] or [p - B, p - 1]
@@ -319,6 +316,8 @@ def main(args):
     k1_at_gamma_assigned = k1_assigned.evaluate(gamma)
     phase_1_eval_at_gamma_constraint_advice_cell_count += len(k1_assigned.coefficients) * 2 - 1
 
+    pk0_bound_array = []
+
     for i in range(len(ciphertext)):
         # sanity check. The coefficients of ct0i should be in the range [-(qi-1)/2, (qi-1)/2]
         bound = int((qis[i] - 1) / 2)
@@ -333,29 +332,46 @@ def main(args):
         res = ais[i] * s
         assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
 
+
         # sanity check. The coefficients of pk0 = ai * s + e should be in the range $- (N \cdot \frac{q_i - 1}{2} + B), N \cdot \frac{q_i - 1}{2} + B]$
-        bound = int((qis[i] - 1) / 2) * n + b
+        bound = int(n * ((qis[i] - 1) / 2) + b)
         res = ais[i] * s + e
         assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
 
-        #constraint .The coefficient of pk0i_assigned should be in range [-(n(qi-1)/2 + b), n(qi-1)/2 + b]
-        pk0_bound = int((n*(qis[i] -1 )/2) + b)
-        print(f"pk0_bound = {pk0_bound}")
-        print(f"N = {n}")
-        print(f"qis = {qis[i]}")
-        print(f" interation = {i}")
 
-        #assert all(coeff >= -pk0_bound and coeff <= pk0_bound for coeff in pk0i_assigned[i].coefficients)
+        #constraint .The coefficient of pk0i_assigned should be in range [-(qi-1)/2 , (qi-1)/2 ]
+        pk0_bound = int((qis[i] - 1) / 2)
+        pk0_bound_array.append(pk0_bound)
+
+        
+        #for i,pk in enumerate(pk0i_assigned[i].coefficients):
+            #print(f"pk coff = {pk}")
+
+        assert all(coeff >= -pk0_bound and coeff <= pk0_bound for coeff in pk0is[i].coefficients)
 
         # After the circuit assignement, the coefficients of pk0i_assigned[i] must be in [0, pk0_bound] or [p - pk0_bound, p - 1] 
-        #assert all(coeff in range(0, int(pk0_bound) + 1) or coeff in range(p - int(pk0_bound), p) for coeff in pk0i_assigned[i].coefficients)
+        assert all(coeff in range(0, int(pk0_bound) + 1) or coeff in range(p - int(pk0_bound), p) for coeff in pk0i_assigned[i].coefficients)
 
         # To perform a range check with a smaller lookup table, we shift the coefficients of k1_assigned to be in [0, 2*k1_bound] (the shift operation is constrained inside the circuit)
         pk0i_shifted = Polynomial([(coeff + int(pk0_bound)) % p for coeff in pk0i_assigned[i].coefficients])
-        #assert all(coeff >= 0 and coeff <= 2*pk0_bound for coeff in pk0i_shifted.coefficients)
+        assert all(coeff >= 0 and coeff <= 2*pk0_bound for coeff in pk0i_shifted.coefficients)
 
         phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(pk0i_assigned[i], 2*pk0_bound + 1, lookup_bits)
 
+
+        #sanity check . the coefficient of pk0is[i] * u should be in range [(-n*(qis-1)/2),(n*(qis-1)/2)]
+        bound = int((qis[i] - 1) /2 ) * n
+        res = pk0is[i] * u
+        assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
+
+        #sanity check , the coefficient of pk0is[i] * u + e0 should be in range [(-n*(qis-1)/2) + b,(n*(qis-1)/2) + b]
+        bound = int((qis[i] - 1) / 2) * n + b
+        res = pk0is[i] * u + e0
+        assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
+
+        # sanity check. The coefficients of ct0i_hat (pk0is[i] * u + e0 + k1 * k0i) should be in the range $[- (N \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|), N \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|]$
+        bound = int((qis[i] - 1) / 2) * n + b + int((t - 1) / 2) * abs(k0is[i])
+        assert all(coeff >= -bound and coeff <= bound for coeff in ct0is_hat[i].coefficients)
 
 
 
@@ -381,9 +397,7 @@ def main(args):
         res = k1.scalar_mul(k0is[i])
         assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
 
-        # sanity check. The coefficients of ct0i_hat (ai * s + e + k1 * k0i) should be in the range $[- (N \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|), N \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|]$
-        bound = int((qis[i] - 1) / 2) * n + b + int((t - 1) / 2) * abs(k0is[i])
-        assert all(coeff >= -bound and coeff <= bound for coeff in ct0is_hat[i].coefficients)
+       
 
         # sanity check. The coefficients of ct0i - ct0i_hat should be in the range $ [- ((N+1) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|), (N+1) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|]$
         bound = int((qis[i] - 1) / 2) * (n + 1) + b + int((t - 1) / 2) * abs(k0is[i])
@@ -507,11 +521,12 @@ def main(args):
         f.write(f"/// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.\n")
         f.write(f"pub const N: usize = {n};\n")
         f.write(f"///'The coefficients pf the polynomial 'pk0is` should exist in the interval '[-PK0_BOUND, PK0_BOUND]`.\n")
-        f.write(f"pub const PK0_BOUND:u64 = {pk0_bound};\n")
+        pk0_bound_str = ', '.join(map(str,pk0_bound_array))
+        f.write(f"pub const PK0_BOUND :[u64; {len(pk0_bound_array)}] = [{pk0_bound_str}];\n")
         f.write(f"/// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with 𝜎 = 3.2\n")
         f.write(f"pub const E_BOUND: u64 = {b};\n")
         f.write(f"/// The coefficients of the polynomial `s` should exist in the interval `[-S_BOUND, S_BOUND]`.\n")
-        f.write(f"pub const u_BOUND: u64 = {1};\n")
+        f.write(f"pub const U_BOUND: u64 = {1};\n")
         f.write(f"/// The coefficients of the polynomials `r1is` should exist in the interval `[-R1_BOUND[i], R1_BOUND[i]]` where `R1_BOUND[i]` is equal to `(qi-1)/2`\n")
         f.write(f"pub const R1_BOUNDS: [u64; {len(r1_bounds)}] = [{', '.join(map(str, r1_bounds))}];\n")
         f.write(f"/// The coefficients of the polynomials `r2is` should exist in the interval `[-R2_BOUND[i], R2_BOUND[i]]` where `R2_BOUND[i]` is equal to $\\frac{{(N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B + \\frac{{t - 1}}{{2}} \\cdot |K_{{0,i}}|}}{{q_i}}$\n")

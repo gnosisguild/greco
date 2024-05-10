@@ -10,9 +10,8 @@ use halo2_base::{
 use serde::Deserialize;
 
 use crate::{
-    constants::sk_enc_constants::{
-        sk_enc_constants_4096_2x55_65537::S_BOUND,
-        sk_enc_constants_4096_2x55_65537::{E_BOUND, K0IS, K1_BOUND, N, QIS, R1_BOUNDS, R2_BOUNDS},
+    constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
+        E_BOUND, K0IS, K1_BOUND, N, PK0_BOUND, QIS, R1_BOUNDS, R2_BOUNDS, U_BOUND,
     },
     poly::{Poly, PolyAssigned},
 };
@@ -227,9 +226,14 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let cyclo_at_gamma = gamma.pow_vartime([N as u64]) + F::from(1);
         let cyclo_at_gamma_assigned = ctx_gate.load_witness(cyclo_at_gamma);
 
-        u_assigned.range_check(ctx_gate, range, S_BOUND);
+        u_assigned.range_check(ctx_gate, range, U_BOUND);
         e0_assigned.range_check(ctx_gate, range, E_BOUND);
         k1_assigned.range_check(ctx_gate, range, K1_BOUND);
+
+        let _ = pk0_qi_assigned
+            .iter()
+            .enumerate()
+            .map(|(i, pk_assigned)| pk_assigned.range_check(ctx_gate, range, PK0_BOUND[i]));
 
         for z in 0..ct0is.len() {
             r2is_assigned[z].range_check(ctx_gate, range, R2_BOUNDS[z]);
@@ -298,7 +302,7 @@ mod test {
     use std::{fs::File, io::Read};
 
     use axiom_eth::{
-        halo2_proofs::plonk::{keygen_pk, keygen_pk2, keygen_vk},
+        halo2_proofs::plonk::{keygen_pk, keygen_vk},
         halo2curves::bn256::Fr,
         rlc::{circuit::builder::RlcCircuitBuilder, utils::executor::RlcExecutor},
     };
@@ -319,7 +323,6 @@ mod test {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let empty_pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
-        println!("fetched succefully");
 
         // 2. Generate (unsafe) trusted setup parameters
         // Here we are setting a small k for optimization purposes
