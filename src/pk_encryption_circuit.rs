@@ -11,7 +11,7 @@ use serde::Deserialize;
 
 use crate::{
     constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
-        E_BOUND, K0IS, K1_BOUND, N, PK0_BOUND, QIS, R1_BOUNDS, R2_BOUNDS, U_BOUND,
+        E_BOUND, K0IS, K1_BOUND, N, PK_BOUND, QIS, R1_BOUNDS, R2_BOUNDS, U_BOUND,
     },
     poly::{Poly, PolyAssigned},
 };
@@ -233,7 +233,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let _ = pk0_qi_assigned
             .iter()
             .enumerate()
-            .map(|(i, pk_assigned)| pk_assigned.range_check(ctx_gate, range, PK0_BOUND[i]));
+            .map(|(i, pk_assigned)| pk_assigned.range_check(ctx_gate, range, PK_BOUND[i]));
 
         for z in 0..ct0is.len() {
             r2is_assigned[z].range_check(ctx_gate, range, R2_BOUNDS[z]);

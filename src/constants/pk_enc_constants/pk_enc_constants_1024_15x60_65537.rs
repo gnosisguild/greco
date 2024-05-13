@@ -1,7 +1,7 @@
 /// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.
 pub const N: usize = 1024;
-///'The coefficients pf the polynomial 'pk0is` should exist in the interval '[-PK0_BOUND, PK0_BOUND]`.
-pub const PK0_BOUND: [u64; 15] = [
+///'The coefficients pf the polynomial 'pk0is` and 'pk1is' should exist in the interval '[-PK_BOUND, PK_BOUND]`.
+pub const PK_BOUND: [u64; 15] = [
     576460752303292416,
     576460752299360256,
     576460752298508288,
@@ -18,6 +18,7 @@ pub const PK0_BOUND: [u64; 15] = [
     576460752290709504,
     576460752290447360,
 ];
+///'The coefficients pf the polynomial 'pk1is` should exist in the interval '[-PK0_BOUND, PK0_BOUND]`.
 /// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with 𝜎 = 3.2
 pub const E_BOUND: u64 = 19;
 /// The coefficients of the polynomial `s` should exist in the interval `[-S_BOUND, S_BOUND]`.
@@ -29,6 +30,28 @@ pub const R1_BOUNDS: [u64; 15] = [
 ];
 /// The coefficients of the polynomials `r2is` should exist in the interval `[-R2_BOUND[i], R2_BOUND[i]]` where `R2_BOUND[i]` is equal to $\frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}$
 pub const R2_BOUNDS: [u64; 15] = [
+    576460752303292416,
+    576460752299360256,
+    576460752298508288,
+    576460752297984000,
+    576460752297820160,
+    576460752296706048,
+    576460752296411136,
+    576460752296214528,
+    576460752294969344,
+    576460752293265408,
+    576460752292773888,
+    576460752291823616,
+    576460752290938880,
+    576460752290709504,
+    576460752290447360,
+];
+/// The coefficients of the polynomials `p1is` should exist in the interval `[-P1_BOUND[i], P1_BOUND[i]]` where `P1_BOUND[i]` is equal to (((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i]
+pub const P1_BOUNDS: [u64; 15] = [
+    513, 513, 513, 513, 513, 513, 513, 513, 513, 513, 513, 513, 513, 513, 513,
+];
+/// The coefficients of the polynomials `p2is` should exist in the interval `[-P2_BOUND[i], P2_BOUND[i]]` where `P2_BOUND[i]` is equal to (qis[i] - 1) / 2  
+pub const P2_BOUNDS: [u64; 15] = [
     576460752303292416,
     576460752299360256,
     576460752298508288,
