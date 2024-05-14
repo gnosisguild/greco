@@ -246,7 +246,6 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvSkEncryptionCircuit {
             gate.assert_is_const(ctx_gate, &res, &F::from(1));
         }
     }
-
     fn instances(&self) -> Vec<Vec<F>> {
         let mut instance = vec![];
         for ai in self.ais.iter() {
