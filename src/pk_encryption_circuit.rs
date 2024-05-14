@@ -1,21 +1,29 @@
 use axiom_eth::rlc::{
     chip::RlcChip,
-    circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
+    circuit::{ builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams },
 };
 use halo2_base::{
-    gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
+    gates::{ circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions },
     utils::ScalarField,
-    AssignedValue,
     QuantumCell::Constant,
 };
 use serde::Deserialize;
 
 use crate::{
     constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
-        E_BOUND, K0IS, K1_BOUND, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS, R1_BOUNDS, R2_BOUNDS,
+        E_BOUND,
+        K0IS,
+        K1_BOUND,
+        N,
+        P1_BOUNDS,
+        P2_BOUNDS,
+        PK_BOUND,
+        QIS,
+        R1_BOUNDS,
+        R2_BOUNDS,
         U_BOUND,
     },
-    poly::{Poly, PolyAssigned},
+    poly::{ Poly, PolyAssigned },
 };
 
 /// Helper function to define the parameters of the RlcCircuit. This is a non-optimized configuration that makes use of a single advice column. Use this for testing purposes only.
@@ -27,7 +35,7 @@ pub fn test_params() -> RlcCircuitParams {
             num_fixed: 1,
             num_lookup_advice_per_phase: vec![0, 1],
             lookup_bits: Some(8),
-            num_instance_columns: 0,
+            num_instance_columns: 1,
         },
         num_rlc_columns: 1,
     }
@@ -96,14 +104,13 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     fn virtual_assign_phase0(
         &self,
         builder: &mut RlcCircuitBuilder<F>,
-        _: &RangeChip<F>,
+        _: &RangeChip<F>
     ) -> Self::FirstPhasePayload {
         let ctx = builder.base.main(0);
 
-        let mut public_inputs = Vec::<AssignedValue<F>>::new();
+        let mut public_inputs = vec![];
 
-        let pk0_qi = self
-            .pk0_qi
+        let pk0_qi = self.pk0_qi
             .iter()
             .map(|pk0_qi| Poly::<F>::new(pk0_qi.clone()))
             .collect::<Vec<_>>();
@@ -112,8 +119,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             .map(|pk0_qi| PolyAssigned::new(ctx, pk0_qi))
             .collect::<Vec<_>>();
 
-        let pk1_qi = self
-            .pk1_qi
+        let pk1_qi = self.pk1_qi
             .iter()
             .map(|pk1_qi| Poly::<F>::new(pk1_qi.clone()))
             .collect::<Vec<_>>();
@@ -134,8 +140,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let k1 = Poly::<F>::new(self.k1.clone());
         let k1_assigned = PolyAssigned::new(ctx, k1);
 
-        let r1is_assigned = self
-            .r1is
+        let r1is_assigned = self.r1is
             .iter()
             .map(|r1is| {
                 let r1is = Poly::<F>::new(r1is.clone());
@@ -143,8 +148,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        let r2is_assigned = self
-            .r2is
+        let r2is_assigned = self.r2is
             .iter()
             .map(|r2is| {
                 let r2is = Poly::<F>::new(r2is.clone());
@@ -152,8 +156,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        let p1is_assigned = self
-            .p1is
+        let p1is_assigned = self.p1is
             .iter()
             .map(|p1is| {
                 let p1is = Poly::<F>::new(p1is.clone());
@@ -161,8 +164,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        let p2is_assigned = self
-            .p2is
+        let p2is_assigned = self.p2is
             .iter()
             .map(|p2is| {
                 let p2is = Poly::<F>::new(p2is.clone());
@@ -170,8 +172,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        let ct0is_assigned = self
-            .ct0is
+        let ct0is_assigned = self.ct0is
             .iter()
             .map(|ct0is| {
                 let ct0is = Poly::<F>::new(ct0is.clone());
@@ -179,8 +180,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        let ct1is_assigned = self
-            .ct1is
+        let ct1is_assigned = self.ct1is
             .iter()
             .map(|ct1is| {
                 let ct1is = Poly::<F>::new(ct1is.clone());
@@ -189,16 +189,16 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             .collect::<Vec<_>>();
 
         for pk0 in pk0_qi_assigned.iter() {
-            public_inputs.push(pk0.assigned_coefficients[0])
+            public_inputs.push(pk0.assigned_coefficients[0]);
         }
         for pk1 in pk1_qi_assigned.iter() {
-            public_inputs.push(pk1.assigned_coefficients[0])
+            public_inputs.push(pk1.assigned_coefficients[0]);
         }
         for ct0 in ct0is_assigned.iter() {
-            public_inputs.push(ct0.assigned_coefficients[0])
+            public_inputs.push(ct0.assigned_coefficients[0]);
         }
         for ct1 in ct1is_assigned.iter() {
-            public_inputs.push(ct1.assigned_coefficients[0])
+            public_inputs.push(ct1.assigned_coefficients[0]);
         }
 
         builder.base.assigned_instances[0] = public_inputs;
@@ -223,7 +223,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
     /// In this phase, the following two core constraints are enforced:
 
-    /// - The coefficients of $S_i$ are in the expected range.  
+    /// - The coefficients of $S_i$ are in the expected range.
     /// - $P_i(\gamma) \times S_i(\gamma) =Ct_{0,i}(\gamma)$
 
     /// ##### Assignment
@@ -263,7 +263,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         builder: &mut RlcCircuitBuilder<F>,
         range: &RangeChip<F>,
         rlc: &RlcChip<F>,
-        payload: Self::FirstPhasePayload,
+        payload: Self::FirstPhasePayload
     ) {
         let Payload {
             pk0_qi_assigned,
@@ -297,11 +297,14 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         }
 
         // cyclo poly is equal to x^N + 1
-        let bits_used = usize::BITS as usize - N.leading_zeros() as usize;
+        let bits_used = (usize::BITS as usize) - (N.leading_zeros() as usize);
         rlc.load_rlc_cache((ctx_gate, ctx_rlc), gate, bits_used);
         let cyclo_at_gamma_assigned = rlc.rlc_pow_fixed(ctx_gate, gate, N);
-        let cyclo_at_gamma_assigned =
-            gate.add(ctx_gate, cyclo_at_gamma_assigned, Constant(F::from(1)));
+        let cyclo_at_gamma_assigned = gate.add(
+            ctx_gate,
+            cyclo_at_gamma_assigned,
+            Constant(F::from(1))
+        );
 
         u_assigned.range_check(ctx_gate, range, U_BOUND);
         e0_assigned.range_check(ctx_gate, range, E_BOUND);
@@ -364,7 +367,6 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             // LHS(gamma) = RHS(gamma)
             let res = gate.is_equal(ctx_gate, lhs, rhs);
             gate.assert_is_const(ctx_gate, &res, &F::from(1));
-            println!("i = {}", z);
         }
 
         for z in 0..ct1is_assigned.len() {
@@ -409,28 +411,24 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 }
 #[cfg(test)]
 mod test {
-
-    use std::{fs::File, io::Read};
+    use std::{ fs::File, io::Read };
 
     use axiom_eth::{
-        halo2_proofs::{
-            dev::MockProver,
-            plonk::{keygen_pk, keygen_vk},
-        },
+        halo2_proofs::{ dev::MockProver, plonk::{ keygen_pk, keygen_vk } },
         halo2curves::bn256::Fr,
-        rlc::{circuit::builder::RlcCircuitBuilder, utils::executor::RlcExecutor},
+        rlc::{
+            circuit::{ builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions },
+            utils::executor::RlcExecutor,
+        },
     };
     use halo2_base::{
         gates::circuit::CircuitBuilderStage,
-        utils::{
-            fs::gen_srs,
-            testing::{check_proof, gen_proof},
-        },
+        utils::{ fs::gen_srs, testing::{ check_proof_with_instances, gen_proof_with_instances } },
     };
 
     use crate::constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::R1_BOUNDS;
 
-    use super::{test_params, BfvPkEncryptionCircuit};
+    use super::{ test_params, BfvPkEncryptionCircuit };
 
     #[test]
     fn test_pk_enc_valid() {
@@ -446,10 +444,11 @@ mod test {
         let kzg_params = gen_srs(k as u32);
 
         // 3. Build the circuit for key generation,
-        let mut key_gen_builder =
-            RlcCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k);
+        let mut key_gen_builder = RlcCircuitBuilder::<Fr>
+            ::from_stage(CircuitBuilderStage::Keygen, 0)
+            .use_k(k);
         key_gen_builder.base.set_lookup_bits(k - 1); // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
-
+        key_gen_builder.base.set_instance_columns(1);
         let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
 
         // The parameters are auto configured by halo2 lib to fit all the columns into the `k`-sized table
@@ -462,10 +461,12 @@ mod test {
         drop(rlc_circuit);
 
         // 5. Generate the proof, here we pass the actual inputs
-        let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
-                .use_params(rlc_circuit_params);
+        let mut proof_gen_builder: RlcCircuitBuilder<Fr> = RlcCircuitBuilder::from_stage(
+            CircuitBuilderStage::Prover,
+            0
+        ).use_params(rlc_circuit_params);
         proof_gen_builder.base.set_lookup_bits(k - 1);
+        proof_gen_builder.base.set_instance_columns(1);
 
         let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
@@ -475,15 +476,12 @@ mod test {
 
         let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
 
-        rlc_circuit
-            .0
-            .builder
-            .borrow_mut()
-            .set_break_points(break_points);
-        let proof = gen_proof(&kzg_params, &pk, rlc_circuit);
+        rlc_circuit.0.builder.borrow_mut().set_break_points(break_points);
+        let instances = pk_enc_circuit.instances();
+        let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
         // 6. Verify the proof
-        check_proof(&kzg_params, pk.get_vk(), &proof, true);
+        check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
     }
 
     #[test]
@@ -502,10 +500,12 @@ mod test {
         let kzg_params = gen_srs(k as u32);
 
         // 3. Build the circuit for key generation,
-        let mut key_gen_builder =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k);
+        let mut key_gen_builder = RlcCircuitBuilder::from_stage(
+            CircuitBuilderStage::Keygen,
+            0
+        ).use_k(k);
         key_gen_builder.base.set_lookup_bits(k - 1); // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
-
+        key_gen_builder.base.set_instance_columns(1);
         let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
 
         // The parameters are auto configured by halo2 lib to fit all the columns into the `k`-sized table
@@ -518,28 +518,27 @@ mod test {
         drop(rlc_circuit);
 
         // 5. Generate the proof, here we pass the actual inputs
-        let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
-                .use_params(rlc_circuit_params);
+        let mut proof_gen_builder: RlcCircuitBuilder<Fr> = RlcCircuitBuilder::from_stage(
+            CircuitBuilderStage::Prover,
+            0
+        ).use_params(rlc_circuit_params);
         proof_gen_builder.base.set_lookup_bits(k - 1);
+        proof_gen_builder.base.set_instance_columns(1);
 
         let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+        let instances = pk_enc_circuit.instances();
 
         let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
 
-        rlc_circuit
-            .0
-            .builder
-            .borrow_mut()
-            .set_break_points(break_points);
-        let proof = gen_proof(&kzg_params, &pk, rlc_circuit);
+        rlc_circuit.0.builder.borrow_mut().set_break_points(break_points);
+        let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
         // 6. Verify the proof
-        check_proof(&kzg_params, pk.get_vk(), &proof, true);
+        check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
     }
 
     #[test]
@@ -550,6 +549,7 @@ mod test {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+        let instances = pk_enc_circuit.instances();
 
         // 2. Invalidate the circuit by setting the value of a coefficient of the polynomial `r1is[0]` to be out of range
         let out_of_range_coeff = R1_BOUNDS[0] + 1;
@@ -557,10 +557,13 @@ mod test {
 
         // 3. Build the circuit for MockProver
         let rlc_circuit_params = test_params();
-        let mut mock_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
-                .use_params(rlc_circuit_params.clone());
+        let mut mock_builder: RlcCircuitBuilder<Fr> = RlcCircuitBuilder::from_stage(
+            CircuitBuilderStage::Mock,
+            0
+        ).use_params(rlc_circuit_params.clone());
         mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
+
+        mock_builder.base.set_instance_columns(1);
 
         let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
 
@@ -568,9 +571,8 @@ mod test {
         let invalid_mock_prover = MockProver::run(
             rlc_circuit_params.base.k.try_into().unwrap(),
             &rlc_circuit,
-            vec![],
-        )
-        .unwrap();
+            instances
+        ).unwrap();
 
         // 5. Assert that the circuit is not satisfied
         // In particular, it should fail the range check enforced in the second phase for the first coefficient of r1is[0] and the equality check in the second phase for the 0-th basis
@@ -585,6 +587,7 @@ mod test {
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
         let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+        let instances = pk_enc_circuit.instances();
 
         // 2. Invalidate the circuit by setting a different `s` polynomial
         let invalid_pk0 = vec!["1".to_string(); 1024];
@@ -592,10 +595,12 @@ mod test {
 
         // 3. Build the circuit for MockProver
         let rlc_circuit_params = test_params();
-        let mut mock_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
-                .use_params(rlc_circuit_params.clone());
+        let mut mock_builder: RlcCircuitBuilder<Fr> = RlcCircuitBuilder::from_stage(
+            CircuitBuilderStage::Mock,
+            0
+        ).use_params(rlc_circuit_params.clone());
         mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
+        mock_builder.base.set_instance_columns(1);
 
         let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
 
@@ -603,9 +608,8 @@ mod test {
         let invalid_mock_prover = MockProver::run(
             rlc_circuit_params.base.k.try_into().unwrap(),
             &rlc_circuit,
-            vec![],
-        )
-        .unwrap();
+            instances
+        ).unwrap();
 
         // 5. Assert that the circuit is not satisfied
         // In particular, it should fail the equality check (LHS=RHS) in the second phase for each i-th CRT basis
@@ -627,18 +631,20 @@ mod test {
         for k in 12..=18 {
             let kzg_params = gen_srs(k as u32);
             let config = Config { kzg_params, k };
-            configs.push(config)
+            configs.push(config);
         }
 
         // Prepare a table to display results
         let mut table = Table::new();
-        table.add_row(row![
-            "K",
-            "VK Generation Time",
-            "PK Generation Time",
-            "Proof Generation Time",
-            "Proof Verification Time"
-        ]);
+        table.add_row(
+            row![
+                "K",
+                "VK Generation Time",
+                "PK Generation Time",
+                "Proof Generation Time",
+                "Proof Verification Time"
+            ]
+        );
 
         for config in &configs {
             println!("Running bench for k={}", config.k);
@@ -648,12 +654,15 @@ mod test {
             let mut file = File::open(file_path_zeroes).unwrap();
             let mut data = String::new();
             file.read_to_string(&mut data).unwrap();
-            let empty_pk_enc_circuit =
-                serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+            let empty_pk_enc_circuit = serde_json
+                ::from_str::<BfvPkEncryptionCircuit>(&data)
+                .unwrap();
 
             // 2. Build the circuit for key generation,
-            let mut key_gen_builder =
-                RlcCircuitBuilder::from_stage(CircuitBuilderStage::Keygen, 0).use_k(config.k);
+            let mut key_gen_builder = RlcCircuitBuilder::from_stage(
+                CircuitBuilderStage::Keygen,
+                0
+            ).use_k(config.k);
             key_gen_builder.base.set_lookup_bits(config.k - 1); // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
 
             let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
@@ -672,9 +681,10 @@ mod test {
             drop(rlc_circuit);
 
             // 4. Generate the proof, here we pass the actual inputs
-            let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
-                RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
-                    .use_params(rlc_circuit_params);
+            let mut proof_gen_builder: RlcCircuitBuilder<Fr> = RlcCircuitBuilder::from_stage(
+                CircuitBuilderStage::Prover,
+                0
+            ).use_params(rlc_circuit_params);
             proof_gen_builder.base.set_lookup_bits(config.k - 1);
 
             let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
@@ -685,27 +695,25 @@ mod test {
 
             let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
 
-            rlc_circuit
-                .0
-                .builder
-                .borrow_mut()
-                .set_break_points(break_points);
+            rlc_circuit.0.builder.borrow_mut().set_break_points(break_points);
             let timer = std::time::Instant::now();
-            let proof = gen_proof(&config.kzg_params, &pk, rlc_circuit);
+            let proof = gen_proof_with_instances(&config.kzg_params, &pk, rlc_circuit);
             let proof_gen_time = timer.elapsed();
 
             // 5. Verify the proof
             let timer = std::time::Instant::now();
-            check_proof(&config.kzg_params, pk.get_vk(), &proof, true);
+            check_proof_with_instances(&config.kzg_params, pk.get_vk(), &proof, true);
             let proof_verification_time = timer.elapsed();
 
-            table.add_row(row![
-                config.k,
-                format!("{:?}", vk_gen_time),
-                format!("{:?}", pk_gen_time),
-                format!("{:?}", proof_gen_time),
-                format!("{:?}", proof_verification_time),
-            ]);
+            table.add_row(
+                row![
+                    config.k,
+                    format!("{:?}", vk_gen_time),
+                    format!("{:?}", pk_gen_time),
+                    format!("{:?}", proof_gen_time),
+                    format!("{:?}", proof_verification_time)
+                ]
+            );
         }
         println!("bfv params: {:?}", file_path);
         table.printstd();
