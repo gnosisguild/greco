@@ -1,7 +1,6 @@
 import os
 from bfv.crt import CRTModuli
 from bfv.bfv import BFVCrt
-from bfv.bfv import BFV
 from bfv.discrete_gauss import DiscreteGaussian
 from bfv.polynomial import Polynomial, poly_div
 from random import randint

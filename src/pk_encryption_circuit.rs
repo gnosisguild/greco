@@ -21,7 +21,7 @@ use crate::{
 pub fn test_params() -> RlcCircuitParams {
     RlcCircuitParams {
         base: BaseCircuitParams {
-            k: 21,
+            k: 22,
             num_advice_per_phase: vec![1, 1],
             num_fixed: 1,
             num_lookup_advice_per_phase: vec![0, 1],
@@ -403,8 +403,8 @@ mod test {
 
     use axiom_eth::{
         halo2_proofs::{
-            dev::MockProver,
-            plonk::{keygen_pk, keygen_vk},
+            dev::{FailureLocation, MockProver, VerifyFailure},
+            plonk::{keygen_pk, keygen_vk, Any, SecondPhase},
         },
         halo2curves::bn256::Fr,
         rlc::{
@@ -455,7 +455,7 @@ mod test {
 
         // 5. Generate the proof, here we pass the actual inputs
         let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
+            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
                 .use_params(rlc_circuit_params);
         proof_gen_builder.base.set_lookup_bits(k - 1);
         proof_gen_builder.base.set_instance_columns(1);
@@ -558,7 +558,6 @@ mod test {
             RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
                 .use_params(rlc_circuit_params.clone());
         mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
-
         mock_builder.base.set_instance_columns(1);
 
         let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
@@ -573,7 +572,27 @@ mod test {
 
         // 5. Assert that the circuit is not satisfied
         // In particular, it should fail the range check enforced in the second phase for the first coefficient of r1is[0] and the equality check in the second phase for the 0-th basis
-        // TODO:Check from the cmd prmt for excat cell location
+        assert_eq!(
+            invalid_mock_prover.verify(),
+            Err(vec![
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 115709 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 115719 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 2914202 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 2914222 }
+                },
+            ])
+        );
     }
 
     #[test]
@@ -610,7 +629,27 @@ mod test {
 
         // 5. Assert that the circuit is not satisfied
         // In particular, it should fail the equality check (LHS=RHS) in the second phase for each i-th CRT basis
-        // TODO:Check from the cmd prmt for excat cell location
+        assert_eq!(
+            invalid_mock_prover.verify(),
+            Err(vec![
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 2914202 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 1).into(),
+                    location: FailureLocation::OutsideRegion { row: 2914222 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::Instance, 0).into(),
+                    location: FailureLocation::OutsideRegion { row: 0 }
+                },
+                VerifyFailure::Permutation {
+                    column: (Any::advice_in(SecondPhase), 3).into(),
+                    location: FailureLocation::OutsideRegion { row: 8191 }
+                },
+            ])
+        );
     }
 
     #[test]
