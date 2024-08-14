@@ -9,10 +9,7 @@ from utils import assign_to_circuit
 import argparse
 import json
 
-
-
-def main(args): 
-    
+def main(args):
     '''
     ENCRYPTION PHASE - performed outside the circuit.
     '''
