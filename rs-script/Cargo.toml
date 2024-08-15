@@ -1,0 +1,16 @@
+[package]
+name = "rs-script"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+fhe = { path = '../../fhe.rs/crates/fhe' }
+fhe-traits = { path = '../../fhe.rs/crates/fhe-traits' }
+fhe-math = { path = '../../fhe.rs/crates/fhe-math' }
+serde_json = "1.0"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+num-bigint = "0.4.6"
+num-traits = "0.2"
