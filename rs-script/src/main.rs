@@ -2,36 +2,53 @@ use fhe::bfv::{BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey,
 use fhe_math::rns::ScalingFactor;
 use fhe_math::rq::{scaler::Scaler, traits::TryConvertFrom, Context, Poly, Representation};
 use fhe_traits::{FheEncoder, FheEncrypter};
-use num_bigint::BigUint;
+use num_bigint::{BigInt, BigUint};
 use num_traits::{Num, ToPrimitive};
 use rand::thread_rng;
 use serde_json::json;
-use std::{fs, vec};
 use std::ops::Neg;
-use std::sync::Arc;
+use std::{fs, vec};
+use ndarray::Array2;
 
-fn poly_div(num: &Poly, cyclo: &Poly, ctx: &Arc<Context>) -> (Poly, Poly) {
-    let num_coeffs: Vec<u64> = num.coefficients().iter().cloned().collect();
-    let cyclo_coeffs: Vec<u64> = cyclo.coefficients().iter().cloned().collect();
 
-    let mut quotient = vec![0u64; num_coeffs.len() - cyclo_coeffs.len() + 1];
-    let mut remainder = num_coeffs.clone();
+// Still WIP
+fn poly_div(num: &Poly, cyclo: &Poly) -> (Poly, Poly) {
+    let ctx = num.ctx().clone();
+    let degree = ctx.degree;
 
-    let divisor_leading_coeff = cyclo_coeffs[0];
+    let mut quotient_coeffs = Array2::zeros((num.coefficients().nrows(), degree));
+    let mut remainder_coeffs = num.coefficients().to_owned();
 
-    for i in 0..quotient.len() {
-        let coeff = remainder[i] / divisor_leading_coeff;
-        quotient[i] = coeff;
+    for i in 0..num.coefficients().nrows() {
+        let divisor_leading_coeff = cyclo.coefficients()[(i, 0)];
 
-        for j in 0..cyclo_coeffs.len() {
-            remainder[i + j] = remainder[i + j].wrapping_sub(cyclo_coeffs[j].wrapping_mul(coeff));
+        for j in 0..(degree - cyclo.coefficients().ncols() + 1) {
+            let coeff = remainder_coeffs[(i, j)] / divisor_leading_coeff;
+            quotient_coeffs[(i, j)] = coeff;
+
+            for k in 0..cyclo.coefficients().ncols() {
+                remainder_coeffs[(i, j + k)] = remainder_coeffs[(i, j + k)]
+                    .wrapping_sub(cyclo.coefficients()[(i, k)].wrapping_mul(coeff));
+            }
         }
     }
 
-    let quotient_poly =
-        Poly::try_convert_from(&quotient, ctx, false, Representation::PowerBasis).unwrap();
-    let remainder_poly =
-        Poly::try_convert_from(&remainder, ctx, false, Representation::PowerBasis).unwrap();
+    // Create Poly objects for quotient and remainder
+    let quotient_poly = Poly::try_convert_from(
+        quotient_coeffs.as_slice().unwrap(),
+        &ctx,
+        false,
+        Representation::PowerBasis,
+    )
+    .unwrap();
+
+    let remainder_poly = Poly::try_convert_from(
+        remainder_coeffs.as_slice().unwrap(),
+        &ctx,
+        false,
+        Representation::PowerBasis,
+    )
+    .unwrap();
 
     (quotient_poly, remainder_poly)
 }
@@ -74,7 +91,7 @@ fn main() {
     let ct: Ciphertext = pk.try_encrypt(&pt, &mut rng).unwrap();
 
     let ctx = params.ctx().get(0).unwrap();
-    // TODO: Check if u, e0, e1 are the same as used in the pk encryption
+    // TODO: return u, e0, e1 from pk.try_encrypt
     let u = Poly::small(ctx, Representation::Ntt, params.variance(), &mut rng).unwrap();
     let e0 = Poly::small(ctx, Representation::Ntt, params.variance(), &mut rng).unwrap();
     let e1 = Poly::small(ctx, Representation::Ntt, params.variance(), &mut rng).unwrap();
@@ -87,8 +104,8 @@ fn main() {
         .product();
     let scaling_factor = ScalingFactor::new(&q, &BigUint::from(1u64));
     let scaler = Scaler::new(
-        &params.ctx_at_level(0).unwrap(),
-        &params.ctx_at_level(0).unwrap(),
+        &params.ctx_at_level(pt.level()).unwrap(),
+        &params.ctx_at_level(pt.level()).unwrap(),
         scaling_factor,
     )
     .unwrap();
@@ -102,8 +119,17 @@ fn main() {
     )
     .unwrap();
 
-    let pk0_array: Vec<u64> = pk.c.c[0].coefficients().iter().copied().collect();
-    let pk1_array: Vec<u64> = pk.c.c[1].coefficients().iter().copied().collect();
+    let mut r2is = Vec::new();
+    let mut r1is = Vec::new();
+    let mut k0is = Vec::new();
+    let mut ct0is = Vec::new();
+    let mut ct0is_hat = Vec::new();
+    let mut ct1is = Vec::new();
+    let mut ct1is_hat = Vec::new();
+    let mut pk0is = Vec::new();
+    let mut pk1is = Vec::new();
+    let mut p1is = Vec::new();
+    let mut p2is = Vec::new();
 
     let mut cyclo_coeffs = vec![0u64; degree as usize];
     cyclo_coeffs[0] = 1; // x^0 term
@@ -115,76 +141,117 @@ fn main() {
         Representation::PowerBasis,
     )
     .unwrap();
-
     cyclo.change_representation(Representation::Ntt);
 
-    let ct0i = &ct.c[0];
-    let ct1i = &ct.c[1];
+    let ct0 = &ct.c[0]; // First polynomial (corresponding to ct0)
+    let ct1 = &ct.c[1]; // Second polynomial (corresponding to ct1)
+    let pk0 = &pk.c.c[0]; // First polynomial (corresponding to pk0)
+    let pk1 = &pk.c.c[1]; // Second polynomial (corresponding to pk1)
 
-    let pk0 = Poly::try_convert_from(&pk0_array, &ctx, false, Representation::Ntt).unwrap();
-    let pk1 = Poly::try_convert_from(&pk1_array, &ctx, false, Representation::Ntt).unwrap();
+    for (modulus_index, (ct0_coeffs, ct1_coeffs)) in ct0
+        .coefficients()
+        .outer_iter()
+        .zip(ct1.coefficients().outer_iter())
+        .enumerate()
+    {
+        // ct0i = cti[0]
+        let mut ct0i = Poly::try_convert_from(
+            &ct0_coeffs.iter().cloned().collect::<Vec<u64>>(),
+            &params.ctx_at_level(modulus_index).unwrap(),
+            false,
+            Representation::PowerBasis,
+        )
+        .unwrap();
+        ct0i.change_representation(Representation::Ntt);
 
-    let k0i = BigUint::from(plaintext_modulus)
-    .modinv(&BigUint::from(moduli[0]))
-        .unwrap()
-        .to_u64()
+        // ct1i = cti[1]
+        let mut ct1i = Poly::try_convert_from(
+            &ct1_coeffs.iter().cloned().collect::<Vec<u64>>(),
+            &params.ctx_at_level(modulus_index).unwrap(),
+            false,
+            Representation::PowerBasis,
+        )
+        .unwrap();
+        ct1i.change_representation(Representation::Ntt);
+
+        // pk0 = Polynomial(pk_array[i])
+        let mut pk0i = Poly::try_convert_from(
+            &pk0.coefficients()
+                .outer_iter()
+                .nth(modulus_index)
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect::<Vec<u64>>(),
+            &params.ctx_at_level(modulus_index).unwrap(),
+            false,
+            Representation::PowerBasis,
+        )
+        .unwrap();
+        pk0i.change_representation(Representation::Ntt);
+
+        // pk1 = Polynomial(pk_array[i])
+        let mut pk1i = Poly::try_convert_from(
+            &pk1.coefficients()
+                .outer_iter()
+                .nth(modulus_index)
+                .unwrap()
+                .iter()
+                .cloned()
+                .collect::<Vec<u64>>(),
+            &params.ctx_at_level(modulus_index).unwrap(),
+            false,
+            Representation::PowerBasis,
+        )
+        .unwrap();
+        pk1i.change_representation(Representation::Ntt);
+
+        // k0i = pow(-t, -1, qis[i])
+        let k0i = BigInt::from(plaintext_modulus)
+            .neg()
+            .modinv(&BigInt::from(moduli[modulus_index]))
+            .unwrap()
+            .to_u64()
+            .unwrap();
+
+        let scaling_factor = ScalingFactor::new(&BigUint::from(k0i), &BigUint::from(1u64));
+        let scaler = Scaler::new(
+            &params.ctx_at_level(modulus_index).unwrap(),
+            &params.ctx_at_level(modulus_index).unwrap(),
+            scaling_factor,
+        )
         .unwrap();
 
-    let scaling_factor = ScalingFactor::new(&BigUint::from(k0i), &BigUint::from(1u64));
-    let scaler = Scaler::new(
-        &params.ctx_at_level(0).unwrap(),
-        &params.ctx_at_level(0).unwrap(),
-        scaling_factor,
-    )
-    .unwrap();
+        let ct0i_hat: Poly = &pk0i * &u + e0.clone() + k1.scale(&scaler).unwrap();
+        let mut num: Poly = ct0i.clone() + ct0i_hat.clone().neg();
+        let (mut r2i, _remainder) = poly_div(&num, &cyclo);
+        r2i.change_representation(Representation::Ntt);
 
-    println!("pk0: {:?}", pk0.representation());
-    println!("pk1: {:?}", pk1.representation());
-    println!("u: {:?}", u.representation());
-    println!("e0: {:?}", e0.representation());
-    println!("e1: {:?}", e1.representation());
-    println!("cyclo: {:?}", cyclo.representation());
+        num = num + (&r2i * &cyclo).neg();
+        let (mut r1i, _remainder) = poly_div(&num, &cyclo);
+        r1i.change_representation(Representation::Ntt);
 
-    let ct0_hat = &pk0 * &u + e0.clone() + k1.scale(&scaler).unwrap();
-    let mut num: Poly = ct0i - &ct0_hat;
-    let (mut r2, _remainder) = poly_div(&num, &cyclo, &ctx);
-    r2.change_representation(Representation::Ntt);
+        let ct1i_hat: Poly = &pk1i * &u + e1.clone();
+        let num: Poly = ct1i.clone() + ct1i_hat.clone().neg();
+        let (mut p2i, _remainder) = poly_div(&num, &cyclo);
+        p2i.change_representation(Representation::Ntt);
 
-    num = num + (&r2 * &cyclo).neg();
+        let num: Poly = num + (&p2i * &cyclo).neg();
+        let (mut p1i, _remainder) = poly_div(&num, &cyclo);
+        p1i.change_representation(Representation::Ntt);
 
-    let q_coeffs = q.to_u64_digits();
-    let q_poly = Poly::try_convert_from(
-        &q_coeffs,
-        &params.ctx_at_level(0).unwrap(),
-        false,
-        Representation::PowerBasis,
-    )
-    .unwrap();
-    let (mut r1, _remainder) = poly_div(&num, &q_poly, &ctx);
-    r1.change_representation(Representation::Ntt);
-
-    let mut ct1_hat = &pk1 * &u;
-    ct1_hat = &ct1_hat * &e1;
-
-    let num = ct1i - &ct1_hat;
-    let (mut p2, _remainder) = poly_div(&num, &cyclo, &ctx);
-    p2.change_representation(Representation::Ntt);
-
-    let num = num + (&p2 * &cyclo).neg();
-    let (mut p1, _remainder) = poly_div(&num, &q_poly, &ctx);
-    p1.change_representation(Representation::Ntt);
-
-    let r2is = vec![r2];
-    let r1is = vec![r1];
-    let k0is =  vec![k0i];
-    let ct0is = vec![ct0i.clone()];
-    let ct0is_hat = vec![ct0_hat];
-    let ct1is = vec![ct1i.clone()];
-    let ct1is_hat = vec![ct1_hat];
-    let pk0is = vec![pk0.clone()];
-    let pk1is = vec![pk1.clone()];
-    let p1is = vec![p1];
-    let p2is = vec![p2];
+        pk1is.push(pk1i);
+        p2is.push(p2i);
+        p1is.push(p1i);
+        ct1is.push(ct1i);
+        ct1is_hat.push(ct1i_hat);
+        r2is.push(r2i);
+        r1is.push(r1i);
+        k0is.push(k0i);
+        ct0is.push(ct0i);
+        ct0is_hat.push(ct0i_hat);
+        pk0is.push(pk0i);
+    }
 
     let pk0_qi: Vec<Vec<String>> = pk0
         .coefficients()
