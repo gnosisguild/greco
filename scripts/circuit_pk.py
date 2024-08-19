@@ -451,7 +451,7 @@ def main(args):
         p2i_shifted = Polynomial([(coeff + int(p2i_bound)) % p for coeff in p2is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*p2i_bound for coeff in p2i_shifted.coefficients)
 
-        # constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = r1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}]$
+        # constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}]$
         p1i_bound = (int((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i]
         # round bound to the nearest integer
         p1i_bound = int(p1i_bound)
