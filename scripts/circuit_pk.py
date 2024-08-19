@@ -568,8 +568,8 @@ def main(args):
     
     # Parse the inputs into a JSON format such this can be used as input for the (real) circuit
     json_input = {
-        "pk0_qi": [[str(coef) for coef in pk0i.coefficients] for pk0i in pk0i_assigned],
-        "pk1_qi": [[str(coef) for coef in pk1i.coefficients] for pk1i in pk1i_assigned],
+        "pk0i": [[str(coef) for coef in pk0i.coefficients] for pk0i in pk0i_assigned],
+        "pk1i": [[str(coef) for coef in pk1i.coefficients] for pk1i in pk1i_assigned],
         "u": [str(coef) for coef in u_assigned.coefficients],
         "e0": [str(coef) for coef in e0_assigned.coefficients],
         "e1": [str(coef) for coef in e1_assigned.coefficients],
@@ -596,8 +596,8 @@ def main(args):
 
     # Initialize a structure to hold polynomials with zero coefficients. This will be used at key generation.
     json_input_zeroes = {
-        "pk0_qi":[["0" for _ in pk0i.coefficients] for pk0i in pk0i_assigned],
-        "pk1_qi":[["0" for _ in pk1i.coefficients] for pk1i in pk1i_assigned],
+        "pk0i":[["0" for _ in pk0i.coefficients] for pk0i in pk0i_assigned],
+        "pk1i":[["0" for _ in pk1i.coefficients] for pk1i in pk1i_assigned],
         "u": ["0" for _ in u_assigned.coefficients],
         "e0": ["0" for _ in e0_assigned.coefficients],
         "e1": ["0" for _ in e1_assigned.coefficients],
