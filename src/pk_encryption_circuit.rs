@@ -31,26 +31,28 @@ pub fn test_params() -> RlcCircuitParams {
         num_rlc_columns: 1,
     }
 }
-/// `BfvPkEncryptionCircuit` is a circuit that checks the correct formation of a ciphertext resulting from BFV secret key encryption
+/// `BfvPkEncryptionCircuit` is a circuit that checks the correct formation of a ciphertext resulting from BFV public key encryption
 /// All the polynomials coefficients and scalars are normalized to be in the range `[0, p)` where p is the modulus of the prime field of the circuit
 ///
-/// pk_q1 = ( pk0_qi , pk1_qi )=( [ai*s + E] , -ai )
+/// pk_q1 = ( pk0i , pk1i )=( [ai*s + E] , -ai )
 /// # Parameters:
-/// * `pk0_qi`: publicly polynomial created by secret polynomial ([ai*s + E] )
-/// * `pk1_qi`: publicly polynomial created by polynomial (-[ai])
+/// * `pk0i`: publicly polynomial created by secret polynomial ([ai*s + E] )
+/// * `pk1i`: publicly polynomial created by polynomial (-[ai])
 /// * `u`: secret polynomial, sampled from ternary distribution.
 /// * `e0`: error polynomial, sampled from discrete Gaussian distribution.
 /// * `e1`: error polynomial, sampled from discrete Gaussian distribution.
 /// * `k1`: scaled message polynomial.
 /// * `r2is`: list of r2i polynomials for each i-th CRT basis .
 /// * `r1is`: list of r1i polynomials for each CRT i-th CRT basis.
-/// * `p2is`: list of p2i polynomials for each i-th CRT basis .
+/// * `p2is`: list of p2i polynomials for each i-th CRT basis.
+/// * `p1is`: list of p1i polynomials for each i-th CRT basis.
 /// * `ct0is`: list of ct0i (first component of the ciphertext cti) polynomials for each CRT i-th CRT basis.
+/// * `ct1is`: list of ct1i (second component of the ciphertext cti) polynomials for each CRT i-th CRT basis.
 
 #[derive(Deserialize, Clone)]
 pub struct BfvPkEncryptionCircuit {
-    pk0_qi: Vec<Vec<String>>,
-    pk1_qi: Vec<Vec<String>>,
+    pk0i: Vec<Vec<String>>,
+    pk1i: Vec<Vec<String>>,
     u: Vec<String>,
     e0: Vec<String>,
     e1: Vec<String>,
@@ -65,8 +67,8 @@ pub struct BfvPkEncryptionCircuit {
 
 /// Payload returned by the first phase of the circuit to be reused in the second phase
 pub struct Payload<F: ScalarField> {
-    pk0_qi_assigned: Vec<PolyAssigned<F>>,
-    pk1_qi_assigned: Vec<PolyAssigned<F>>,
+    pk0i_assigned: Vec<PolyAssigned<F>>,
+    pk1i_assigned: Vec<PolyAssigned<F>>,
     u_assigned: PolyAssigned<F>,
     e0_assigned: PolyAssigned<F>,
     e1_assigned: PolyAssigned<F>,
@@ -85,7 +87,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     /// #### Phase 0
 
     /// In this phase, the polynomials for each matrix $S_i$ are assigned to the circuit. Namely:
-    /// * polynomials `u`,'e1, `e0`, `k1`, `pk0_qi`,`pk1_q1` are assigned to the witness table. This has to be done only once as these polynomial are common to each $S_i$ matrix
+    /// * polynomials `u`,'e1, `e0`, `k1`, `pk0i`,`pk1_q1` are assigned to the witness table. This has to be done only once as these polynomial are common to each $S_i$ matrix
     /// * polynomials `r1i`, `r2i`,`p1i`,`p2i` are assigned to the witness table for each $S_i$ matrix
     /// * polynomials 'ct0is' and 'ct1is` are assigned to the witness table for each $Ct_i$
 
@@ -102,24 +104,24 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
         let mut public_inputs = vec![];
 
-        let pk0_qi = self
-            .pk0_qi
+        let pk0i = self
+            .pk0i
             .iter()
-            .map(|pk0_qi| Poly::<F>::new(pk0_qi.clone()))
+            .map(|pk0i| Poly::<F>::new(pk0i.clone()))
             .collect::<Vec<_>>();
-        let pk0_qi_assigned = pk0_qi
+        let pk0i_assigned = pk0i
             .into_iter()
-            .map(|pk0_qi| PolyAssigned::new(ctx, pk0_qi))
+            .map(|pk0i| PolyAssigned::new(ctx, pk0i))
             .collect::<Vec<_>>();
 
-        let pk1_qi = self
-            .pk1_qi
+        let pk1i = self
+            .pk1i
             .iter()
-            .map(|pk1_qi| Poly::<F>::new(pk1_qi.clone()))
+            .map(|pk1i| Poly::<F>::new(pk1i.clone()))
             .collect::<Vec<_>>();
-        let pk1_qi_assigned = pk1_qi
+        let pk1i_assigned = pk1i
             .into_iter()
-            .map(|pk1_qi| PolyAssigned::new(ctx, pk1_qi))
+            .map(|pk1i| PolyAssigned::new(ctx, pk1i))
             .collect::<Vec<_>>();
 
         let u = Poly::<F>::new(self.u.clone());
@@ -188,10 +190,10 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             })
             .collect::<Vec<_>>();
 
-        for pk0 in pk0_qi_assigned.iter() {
+        for pk0 in pk0i_assigned.iter() {
             public_inputs.push(pk0.assigned_coefficients[0]);
         }
-        for pk1 in pk1_qi_assigned.iter() {
+        for pk1 in pk1i_assigned.iter() {
             public_inputs.push(pk1.assigned_coefficients[0]);
         }
         for ct0 in ct0is_assigned.iter() {
@@ -204,8 +206,8 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         builder.base.assigned_instances[0] = public_inputs;
 
         Payload {
-            pk0_qi_assigned,
-            pk1_qi_assigned,
+            pk0i_assigned,
+            pk1i_assigned,
             u_assigned,
             e0_assigned,
             e1_assigned,
@@ -244,7 +246,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
     /// ##### Correct Encryption Constraint
 
-    /// It is needed to prove that $P_i(\gamma) \times S_i(\gamma) =Ct_{0,i}(\gamma)$. This can be rewritten as `ct0i = ct0i_hat + r1i * qi + r2i * cyclo`, where `ct0i_hat = pk0_qi * u + e0 + k1 * k0i`.
+    /// It is needed to prove that $P_i(\gamma) \times S_i(\gamma) =Ct_{0,i}(\gamma)$. This can be rewritten as `ct0i = ct0i_hat + r1i * qi + r2i * cyclo`, where `ct0i_hat = pk0i * u + e0 + k1 * k0i`.
 
     /// This constrained is enforced by proving that `LHS(gamma) = RHS(gamma)`. According to the Schwartz-Zippel lemma, if this relation between polynomial when evaluated at a random point holds true, then then the polynomials are identical with high probability. Note that `qi` and `k0i` (for each $U_i$ matrix) are constants to the circuit encoded during key generation.
     /// * Constrain that `ct0i(gamma) = ai(gamma) * s(gamma) + e(gamma) + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)` for each $i$-th CRT basis
@@ -257,8 +259,8 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         payload: Self::FirstPhasePayload,
     ) {
         let Payload {
-            pk0_qi_assigned,
-            pk1_qi_assigned,
+            pk0i_assigned,
+            pk1i_assigned,
             u_assigned,
             e0_assigned,
             e1_assigned,
@@ -299,12 +301,12 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         e1_assigned.range_check(ctx_gate, range, E_BOUND);
         k1_assigned.range_check(ctx_gate, range, K1_BOUND);
 
-        let _ = pk0_qi_assigned
+        let _ = pk0i_assigned
             .iter()
             .enumerate()
             .map(|(i, pk_assigned)| pk_assigned.range_check(ctx_gate, range, PK_BOUND[i]));
 
-        let _ = pk1_qi_assigned
+        let _ = pk1i_assigned
             .iter()
             .enumerate()
             .map(|(i, pk_assigned)| pk_assigned.range_check(ctx_gate, range, PK_BOUND[i]));
@@ -320,23 +322,23 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let e0_at_gamma = e0_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
         let e1_at_gamma = e1_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
         let k1_at_gamma = k1_assigned.enforce_eval_at_gamma(ctx_rlc, rlc);
-        let pk0_qi_at_gamma = pk0_qi_assigned
+        let pk0i_at_gamma = pk0i_assigned
             .iter()
             .map(|pk_assigned| pk_assigned.enforce_eval_at_gamma(ctx_rlc, rlc))
             .collect::<Vec<_>>();
-        let pk1_qi_at_gamma = pk1_qi_assigned
+        let pk1i_at_gamma = pk1i_assigned
             .iter()
             .map(|pk_assigned| pk_assigned.enforce_eval_at_gamma(ctx_rlc, rlc))
             .collect::<Vec<_>>();
         let gate = range.gate();
 
         // For each `i` Prove that LHS(gamma) = RHS(gamma)
-        // pk0_u = pk0_qi(gamma) * u(gamma) + e0(gamma)
+        // pk0_u = pk0i(gamma) * u(gamma) + e0(gamma)
         // LHS = ct0i(gamma)
         // RHS = pk0_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
 
         for z in 0..ct0is_assigned.len() {
-            let pk0_u = gate.mul_add(ctx_gate, pk0_qi_at_gamma[z], u_at_gamma, e0_at_gamma);
+            let pk0_u = gate.mul_add(ctx_gate, pk0i_at_gamma[z], u_at_gamma, e0_at_gamma);
             let r1i_at_gamma = r1is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
             let r2i_at_gamma = r2is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
 
@@ -358,7 +360,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         }
 
         for z in 0..ct1is_assigned.len() {
-            let pk1_u = gate.mul_add(ctx_gate, pk1_qi_at_gamma[z], u_at_gamma, e1_at_gamma);
+            let pk1_u = gate.mul_add(ctx_gate, pk1i_at_gamma[z], u_at_gamma, e1_at_gamma);
 
             let p1i_at_gamma = p1is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
             let p2i_at_gamma = p2is_assigned[z].enforce_eval_at_gamma(ctx_rlc, rlc);
@@ -378,11 +380,11 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
     fn instances(&self) -> Vec<Vec<F>> {
         let mut instance = vec![];
-        for pk0 in self.pk0_qi.iter() {
+        for pk0 in self.pk0i.iter() {
             let pk0_poly = Poly::<F>::new(pk0.clone());
             instance.push(pk0_poly.coefficients[0]);
         }
-        for pk1 in self.pk1_qi.iter() {
+        for pk1 in self.pk1i.iter() {
             let pk1_poly = Poly::<F>::new(pk1.clone());
             instance.push(pk1_poly.coefficients[0]);
         }
@@ -607,7 +609,7 @@ mod test {
 
         // 2. Invalidate the circuit by setting a different `s` polynomial
         let invalid_pk0 = vec!["1".to_string(); 1024];
-        pk_enc_circuit.pk0_qi[0] = invalid_pk0;
+        pk_enc_circuit.pk0i[0] = invalid_pk0;
 
         // 3. Build the circuit for MockProver
         let rlc_circuit_params = test_params();

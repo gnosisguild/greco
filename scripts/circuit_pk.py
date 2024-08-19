@@ -1,12 +1,11 @@
 import os
 from bfv.crt import CRTModuli
 from bfv.bfv import BFVCrt
-import numpy as np
 from bfv.discrete_gauss import DiscreteGaussian
 from bfv.polynomial import Polynomial, poly_div
 from random import randint
 import copy
-from utils import assign_to_circuit, count_advice_cells_needed_for_poly_range_check, print_advice_cells_info
+from utils import assign_to_circuit
 import argparse
 import json
 
@@ -44,8 +43,6 @@ def main(args):
     e0 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
     e1 = bfv_crt.bfv_q.rlwe.SampleFromErrorDistribution()
     u = bfv_crt.bfv_q.rlwe.SampleFromTernaryDistribution()
-
-    
 
     ciphertext = bfv_crt.PubKeyEncrypt(pub_key,m,e0,e1,u)
 
@@ -121,7 +118,7 @@ def main(args):
         # k0i = -t^{-1} namely the multiplicative inverse of t modulo qi
         k0i = pow(-t, -1, qis[i])
 
-        #ct0i_hat = pk0 *u + e0 + k0*k1
+        # ct0i_hat = pk0 *u + e0 + k0*k1
         pk0 = Polynomial(pk_array[i])
         pk1 = Polynomial(pk1_array[i])
         
@@ -246,12 +243,6 @@ def main(args):
     # `p2_bounds` are the bounds for the coefficients of p2i for each CRT basis
     p2_bounds = []    
 
-    # initiate counters for the number of advice cells needed for each constraint phase
-    phase_0_assignment_advice_cell_count = 0
-    phase_1_range_check_advice_cell_count = 0
-    phase_1_eval_at_gamma_constraint_advice_cell_count = 0
-    phase_1_encryption_constraint_advice_cell_count = 0
-
     '''
     CIRCUIT - PHASE 0 - ASSIGNMENT
     '''
@@ -263,19 +254,12 @@ def main(args):
     for i,pk0i in enumerate(pk0is):
         pk0i_assigned.append(assign_to_circuit(pk0i,p))
         pk1i_assigned.append(assign_to_circuit(pk1is[i],p))
-        phase_0_assignment_advice_cell_count += len(pk1i_assigned[i].coefficients)
-        phase_0_assignment_advice_cell_count += len(pk0i_assigned[i].coefficients)
     
 
     e0_assigned = assign_to_circuit(e0, p)
     e1_assigned = assign_to_circuit(e1,p)
     k1_assigned = assign_to_circuit(k1, p)
     u_assigned = assign_to_circuit(u,p)
-
-    phase_0_assignment_advice_cell_count += len(e0_assigned.coefficients)
-    phase_0_assignment_advice_cell_count += len(e1_assigned.coefficients)
-    phase_0_assignment_advice_cell_count += len(u_assigned.coefficients)
-    phase_0_assignment_advice_cell_count += len(k1_assigned.coefficients)
 
     r1is_assigned = []
     r2is_assigned = []
@@ -297,13 +281,6 @@ def main(args):
         r2is_assigned.append(r2i_assigned)
         ct0is_assigned.append(ct0_assigned)
         ct1is_assigned.append(ct1_assigned)
-
-        phase_0_assignment_advice_cell_count += len(r1i_assigned.coefficients)
-        phase_0_assignment_advice_cell_count += len(r2i_assigned.coefficients)
-        phase_0_assignment_advice_cell_count += len(p1i_assigned.coefficients)
-        phase_0_assignment_advice_cell_count += len(p2i_assigned.coefficients)
-        phase_0_assignment_advice_cell_count += len(ct0_assigned.coefficients)
-        phase_0_assignment_advice_cell_count += len(ct1_assigned.coefficients)
 
 
 
@@ -348,8 +325,6 @@ def main(args):
     e0_shifted = Polynomial([(coeff + b) % p for coeff in e0_assigned.coefficients])
     assert all(coeff >= 0 and coeff <= 2*b for coeff in e0_shifted.coefficients)
 
-    phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(e0_assigned, 2*b + 1, lookup_bits)
-
     # constraint. The coefficients of e1 should be in the range [-B, B] where B is the upper bound of the discrete Gaussian distribution
     assert all(coeff >= -b and coeff <= b for coeff in e1.coefficients)
     # After the circuit assignement, the coefficients of e1_assigned must be in [0, B] or [p - B, p - 1]
@@ -357,9 +332,6 @@ def main(args):
     # To perform a range check with a smaller lookup table, we shift the coefficients of e1_assigned to be in [0, 2B] (the shift operation is constrained inside the circuit)
     e1_shifted = Polynomial([(coeff + b) % p for coeff in e1_assigned.coefficients])
     assert all(coeff >= 0 and coeff <= 2*b for coeff in e1_shifted.coefficients)
-
-    phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(e1_assigned, 2*b + 1, lookup_bits)
-    
 
     u_bound = 1
     # constraint. The coefficients of s should be in the range [-1, 0, 1]
@@ -369,7 +341,6 @@ def main(args):
     # To perform a range check with a smaller lookup table, we shift the coefficients of u_assigned to be in [0, 1, 2] (the shift operation is constrained inside the circuit)
     u_shifted = Polynomial([(coeff + 1) % p for coeff in u_assigned.coefficients])
     assert all(coeff >= 0 and coeff <= 2*u_bound for coeff in u_shifted.coefficients)
-    phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(u_assigned, 2*u_bound + 1, lookup_bits)
 
     # constraint. The coefficients of k1 should be in the range [-(t-1)/2, (t-1)/2]
     k1_bound = int((t - 1) / 2)
@@ -379,23 +350,14 @@ def main(args):
     # To perform a range check with a smaller lookup table, we shift the coefficients of k1_assigned to be in [0, 2*k1_bound] (the shift operation is constrained inside the circuit)
     k1_shifted = Polynomial([(coeff + int(k1_bound)) % p for coeff in k1_assigned.coefficients])
     assert all(coeff >= 0 and coeff <= 2*k1_bound for coeff in k1_shifted.coefficients)
-
-    phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(k1_assigned, 2*k1_bound + 1, lookup_bits)
-
    
     e0_at_gamma_assigned = e0_assigned.evaluate(gamma)
-    phase_1_eval_at_gamma_constraint_advice_cell_count += len(e0_assigned.coefficients) * 2 - 1
 
     e1_at_gamma_assigned = e1_assigned.evaluate(gamma)
-    phase_1_eval_at_gamma_constraint_advice_cell_count += len(e1_assigned.coefficients) * 2 - 1
-
 
     k1_at_gamma_assigned = k1_assigned.evaluate(gamma)
-    phase_1_eval_at_gamma_constraint_advice_cell_count += len(k1_assigned.coefficients) * 2 - 1
 
     u_at_gamma_assigned = u_assigned.evaluate(gamma)
-    phase_1_eval_at_gamma_constraint_advice_cell_count += len(u_assigned.coefficients) * 2 - 1
-
 
     pk_bound = []
 
@@ -442,10 +404,6 @@ def main(args):
         pk1i_shifted = Polynomial([(coeff + int(pk0_bound)) % p for coeff in pk1i_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*pk0_bound for coeff in pk1i_shifted.coefficients)
 
-
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(pk0i_assigned[i], 2*pk0_bound + 1, lookup_bits)
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(pk1i_assigned[i], 2*pk0_bound + 1, lookup_bits)
-
         #sanity check . the coefficient of pk0is[i] * u should be in range [(-n*(qis-1)/2),(n*(qis-1)/2)]
         bound = int((qis[i] - 1) /2 ) * n
         res = pk0is[i] * u
@@ -471,8 +429,6 @@ def main(args):
         r2i_shifted = Polynomial([(coeff + int(r2i_bound)) % p for coeff in r2is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*r2i_bound for coeff in r2i_shifted.coefficients)
 
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(r2is_assigned[i], 2*r2i_bound + 1, lookup_bits)
-
         # constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}]$
         r1i_bound = (int((qis[i] - 1) / 2) * (n + 2) + b + int((t - 1) / 2) * abs(k0is[i])) / qis[i]
         # round bound to the nearest integer
@@ -485,9 +441,6 @@ def main(args):
         r1i_shifted = Polynomial([(coeff + int(r1i_bound)) % p for coeff in r1is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*r1i_bound for coeff in r1i_shifted.coefficients)
 
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(r1is_assigned[i], 2*r1i_bound + 1, lookup_bits)
-
-
         # constraint  the coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
         p2i_bound = int((qis[i] - 1) / 2)
         p2_bounds.append(p2i_bound)
@@ -497,8 +450,6 @@ def main(args):
         # To perform a range check with a smaller lookup table, we shift the coefficients of r2i_assigned to be in [0, 2*p2i_bound] (the shift operation is constrained inside the circuit)
         p2i_shifted = Polynomial([(coeff + int(p2i_bound)) % p for coeff in p2is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*p2i_bound for coeff in p2i_shifted.coefficients)
-
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(p2is_assigned[i], 2*p2i_bound + 1, lookup_bits)
 
         # constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = r1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}]$
         p1i_bound = (int((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i]
@@ -512,9 +463,6 @@ def main(args):
         p1i_shifted = Polynomial([(coeff + int(p1i_bound)) % p for coeff in p1is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*p1i_bound for coeff in p1i_shifted.coefficients)
 
-        phase_1_range_check_advice_cell_count += count_advice_cells_needed_for_poly_range_check(p1is_assigned[i], 2*p1i_bound + 1, lookup_bits)
-
-            
         # sanity check. The coefficients of r2i * cyclo should be in the range [-(qi-1)/2, (qi-1)/2]
         bound = int((qis[i] - 1) / 2)
         res = r2is[i] * cyclo
@@ -560,17 +508,11 @@ def main(args):
         r1i_gamma_assigned = r1is_assigned[i].evaluate(gamma)
         r2i_gamma_assigned = r2is_assigned[i].evaluate(gamma)
 
-        phase_1_eval_at_gamma_constraint_advice_cell_count += len(r1is_assigned[i].coefficients) * 2 - 1
-        phase_1_eval_at_gamma_constraint_advice_cell_count += len(r2is_assigned[i].coefficients) * 2 - 1
-
         pk0i_at_gamma = pk0is[i].evaluate(gamma)
         pk0i_at_gamma_assigned = assign_to_circuit(Polynomial([pk0i_at_gamma]),p).coefficients[0]
 
         p1i_gamma_assigned = p1is_assigned[i].evaluate(gamma)
         p2i_gamma_assigned = p2is_assigned[i].evaluate(gamma)
-
-        phase_1_eval_at_gamma_constraint_advice_cell_count += len(p1is_assigned[i].coefficients) * 2 - 1
-        phase_1_eval_at_gamma_constraint_advice_cell_count += len(p2is_assigned[i].coefficients) * 2 - 1
 
         pk1i_at_gamma = pk1is[i].evaluate(gamma)
         pk1i_at_gamma_assigned = assign_to_circuit(Polynomial([pk1i_at_gamma]),p).coefficients[0]
@@ -582,7 +524,6 @@ def main(args):
 
         lhs = ct0is_assigned[i].evaluate(gamma)
         rhs = (pk0i_at_gamma_assigned * u_at_gamma_assigned + e0_at_gamma_assigned + (k1_at_gamma_assigned * k0i_constants[i]) + (r1i_gamma_assigned * qi_constants[i]) + (r2i_gamma_assigned * cyclo_at_gamma_assigned))
-        phase_1_encryption_constraint_advice_cell_count += 32
 
         assert lhs % p == rhs % p
 
@@ -603,17 +544,17 @@ def main(args):
         pk0i_gamma_assigned_expected = assign_to_circuit(Polynomial([pk0i_gamma]), p).coefficients[0]
         assert pk0i_at_gamma_assigned == pk0i_gamma_assigned_expected
 
-        # ct0i_gamma = ciphertext[i][0].evaluate(gamma)
-        # ct0i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct0i_gamma]), p).coefficients[0]
-        # assert ct0is_assigned[i].evaluate(gamma) == ct0i_gamma_assigned_expected
+        ct0i_gamma = ciphertext[i][0].evaluate(gamma)
+        ct0i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct0i_gamma]), p).coefficients[0]
+        assert ct0is_assigned[i].evaluate(gamma) == ct0i_gamma_assigned_expected
 
         pk1i_gamma = pk1is[i].evaluate(gamma)
         pk1i_gamma_assigned_expected = assign_to_circuit(Polynomial([pk1i_gamma]), p).coefficients[0]
         assert pk1i_at_gamma_assigned == pk1i_gamma_assigned_expected 
 
-        # ct1i_gamma = ciphertext[i][1].evaluate(gamma)
-        # ct1i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct1i_gamma]), p).coefficients[0]
-        # assert ct1is_assigned[i].evaluate(gamma) == ct1i_gamma_assigned_expected
+        ct1i_gamma = ciphertext[i][1].evaluate(gamma)
+        ct1i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct1i_gamma]), p).coefficients[0]
+        assert ct1is_assigned[i].evaluate(gamma) == ct1i_gamma_assigned_expected
 
 
         assert qis[i] == qi_constants[i]
@@ -621,9 +562,6 @@ def main(args):
         k0i_assigned_expected = assign_to_circuit(Polynomial([k0is[i]]), p).coefficients[0]
         assert k0i_constants[i] == k0i_assigned_expected
 
-    total_advice_cell_count = phase_0_assignment_advice_cell_count + phase_1_range_check_advice_cell_count + phase_1_eval_at_gamma_constraint_advice_cell_count + phase_1_encryption_constraint_advice_cell_count
-
-    print_advice_cells_info(total_advice_cell_count, phase_0_assignment_advice_cell_count, phase_1_range_check_advice_cell_count, phase_1_eval_at_gamma_constraint_advice_cell_count, phase_1_encryption_constraint_advice_cell_count)
     #  ct0is and ct1is need to be parsed such that their coefficients are in the range [0, p - 1]
     ct0is_in_p = [assign_to_circuit(ct0i, p) for ct0i in ct0is]
     ct1is_in_p = [assign_to_circuit(ct1i, p) for ct1i in ct1is]

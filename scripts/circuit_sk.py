@@ -8,8 +8,6 @@ import copy
 from utils import assign_to_circuit, count_advice_cells_needed_for_poly_range_check, print_advice_cells_info
 import argparse
 import json
-import numpy as np
-
 
 
 
@@ -291,8 +289,7 @@ def main(args):
 
         # sanity check. The coefficients of ai * s + e should be in the range $- (N \cdot \frac{q_i - 1}{2} + B), N \cdot \frac{q_i - 1}{2} + B]$
         bound = int((qis[i] - 1) / 2) * n + b
-        print(f" sk r2 bound = {bound}")
-        res = Polynomial(ais[i]) * s + e
+        res = ais[i] * s + e
         assert all(coeff >= -bound and coeff <= bound for coeff in res.coefficients)
 
         # constraint. The coefficients of r`2i should be in the range [-(qi-1)/2, (qi-1)/2]
