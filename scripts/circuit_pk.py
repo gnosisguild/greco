@@ -546,7 +546,7 @@ def main(args):
 
         ct0i_gamma = ciphertext[i][0].evaluate(gamma)
         ct0i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct0i_gamma]), p).coefficients[0]
-        assert ct0is_assigned[i].evaluate(gamma) == ct0i_gamma_assigned_expected
+        assert ct0is_assigned[i].evaluate(gamma) % p == ct0i_gamma_assigned_expected
 
         pk1i_gamma = pk1is[i].evaluate(gamma)
         pk1i_gamma_assigned_expected = assign_to_circuit(Polynomial([pk1i_gamma]), p).coefficients[0]
@@ -554,7 +554,7 @@ def main(args):
 
         ct1i_gamma = ciphertext[i][1].evaluate(gamma)
         ct1i_gamma_assigned_expected = assign_to_circuit(Polynomial([ct1i_gamma]), p).coefficients[0]
-        assert ct1is_assigned[i].evaluate(gamma) == ct1i_gamma_assigned_expected
+        assert ct1is_assigned[i].evaluate(gamma) % p == ct1i_gamma_assigned_expected
 
 
         assert qis[i] == qi_constants[i]
