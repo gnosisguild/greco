@@ -441,7 +441,7 @@ def main(args):
         r1i_shifted = Polynomial([(coeff + int(r1i_bound)) % p for coeff in r1is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*r1i_bound for coeff in r1i_shifted.coefficients)
 
-        # constraint  the coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
+        # constraint  the coefficients of p2i should be in the range [-(qi-1)/2, (qi-1)/2]
         p2i_bound = int((qis[i] - 1) / 2)
         p2_bounds.append(p2i_bound)
         assert all(coeff >= -p2i_bound and coeff <= p2i_bound for coeff in p2is[i].coefficients)
