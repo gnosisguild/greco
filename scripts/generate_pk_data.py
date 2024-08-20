@@ -36,11 +36,8 @@ def main(args):
 
     r2is = []
     r1is = []
-    k0is = []
     ct0is = []
-    ct0is_hat = []
     ct1is = []
-    ct1is_hat = []
     pk0is = []
     pk1is = []
     p1is = []
@@ -62,7 +59,6 @@ def main(args):
         pk1 = Polynomial(pk1_array[i])
 
         ct0i_hat = pk0 * u + e0 + k1.scalar_mul(k0i)
-
         num = ct0i + ct0i_hat.scalar_mul(-1)
         num.reduce_coefficients_by_modulus(qis[i])
         quotient, rem = poly_div(num.coefficients, cyclo.coefficients)
@@ -87,13 +83,11 @@ def main(args):
         p2is.append(p2i)
         p1is.append(p1i)
         ct1is.append(ct1i)
-        ct1is_hat.append(ct1i_hat)
         r2is.append(r2i)
         r1is.append(r1i)
-        k0is.append(k0i)
         ct0is.append(ct0i)
-        ct0is_hat.append(ct0i_hat)
         pk0is.append(pk0)
+
 
     pk0i_assigned = [Polynomial([(coef + p) % p for coef in pk0i.coefficients]) for pk0i in pk0is]
     pk1i_assigned = [Polynomial([(coef + p) % p for coef in pk1i.coefficients]) for pk1i in pk1is]

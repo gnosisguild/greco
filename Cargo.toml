@@ -45,3 +45,8 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 incremental = false
+
+[workspace]
+members = [
+    "rs-script",
+]
