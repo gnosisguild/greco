@@ -1,5 +1,5 @@
 use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, PublicKey, SecretKey};
-use fhe_math::rq::{ Poly, Representation};
+use fhe_math::rq::{Poly, Representation};
 use fhe_traits::FheEncoder;
 use num_bigint::BigInt;
 use num_traits::{Num, ToPrimitive, Zero};
@@ -126,23 +126,56 @@ fn main() {
             .unwrap()
             .to_u64()
             .unwrap();
-        let k1i: Vec<BigInt> = scalar_mul(k1.as_slice(), &BigInt::from(k0i));
 
-        let ct0i_hat = poly_add(poly_mul(pk0, ui.clone()), poly_add(e0i, k1i));
-        let mut num = poly_sub(ct0i, ct0i_hat);
+
+        let k1i = scalar_mul(&k1, &BigInt::from(k0i));
+        // Calculate ct0i_hat = pk0 * ui + (e0i + k1i)
+        let ct0i_hat = {
+            let pk0_ui = poly_mul(pk0, ui.clone());
+            let e0i_k1i = poly_add(e0i, k1i);
+            poly_add(pk0_ui, e0i_k1i)
+        };
+        
+        // Compute num = ct0i - ct0i_hat
+        let mut num = poly_sub(ct0i.clone(), ct0i_hat.clone());
+        
+        // Center coefficients of num with respect to the current modulus
         reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[modulus_index]));
-        let (r2i, _remainder) = poly_div(&num, &cyclo.clone());
-
-        num = poly_sub(num, poly_mul(r2i.clone(), cyclo.clone()));
-        let (r1i, _remainder) = poly_div(&num, &vec![BigInt::from(moduli[modulus_index])]);
-
-        let ct1i_hat = poly_add(poly_mul(pk1, ui), e1i);
-        num = poly_sub(ct1i, ct1i_hat);
+        
+        // Compute r2i as the quotient of num divided by the cyclotomic polynomial
+        let (r2i, _) = poly_div(&num, &cyclo.clone());
+        
+        // Calculate r1i using r2i and cyclo
+        let adjusted_num = {
+            let r2i_cyclo = poly_mul(r2i.clone(), cyclo.clone());
+            let ct0i_ct0i_hat = poly_sub(ct0i.clone(), ct0i_hat.clone());
+            poly_sub(ct0i_ct0i_hat, r2i_cyclo)
+        };
+        let (r1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[modulus_index])]);
+        
+        // Calculate ct1i_hat = pk1 * ui + e1i
+        let ct1i_hat = {
+            let pk1_ui = poly_mul(pk1, ui);
+            poly_add(pk1_ui, e1i)
+        };
+        
+        // Compute num = ct1i - ct1i_hat
+        let mut num = poly_sub(ct1i.clone(), ct1i_hat.clone());
+        
+        // Center coefficients of num with respect to the current modulus
         reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[modulus_index]));
-        let (p2i, _remainder) = poly_div(&num, &cyclo.clone());
-        num = poly_sub(num, poly_mul(p2i.clone(), cyclo.clone()));
-        let (p1i, _remainder) = poly_div(&num, &vec![BigInt::from(moduli[modulus_index])]);
-
+        
+        // Compute p2i as the quotient of num divided by the cyclotomic polynomial
+        let (p2i, _) = poly_div(&num, &cyclo.clone());
+        
+        // Calculate p1i using p2i and cyclo
+        let adjusted_num = {
+            let p2i_cyclo = poly_mul(p2i.clone(), cyclo.clone());
+            let ct1i_ct1i_hat = poly_sub(ct1i.clone(), ct1i_hat.clone());
+            poly_sub(ct1i_ct1i_hat, p2i_cyclo)
+        };
+        let (p1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[modulus_index])]);
+        
         p2is.push(p2i);
         p1is.push(p1i);
         r2is.push(r2i);
@@ -162,7 +195,6 @@ fn main() {
         add_p_and_modulo(p1i, &p);
     }
     add_p_and_modulo(&mut k1, &p);
-
 
     let pk_array_assigned = add_p_and_modulo_poly(&pk_array, &p);
     let pk1_array_assigned = add_p_and_modulo_poly(&pk1_array, &p);
@@ -190,8 +222,9 @@ fn main() {
     fs::write("output.json", json_data.to_string()).unwrap();
     fs::write(
         "output_zeroes.json",
-        create_zeroes_json(params.degree(), params.moduli().len())
-            .to_string()).unwrap();
+        create_zeroes_json(params.degree(), params.moduli().len()).to_string(),
+    )
+    .unwrap();
 }
 
 fn poly_add(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
@@ -264,8 +297,7 @@ fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<BigInt
         quotient[i] = coeff.clone();
 
         for j in 0..divisor.len() {
-            let rem = &remainder[i + j] - &divisor[j] * &coeff;
-            remainder[i + j] = rem;
+            remainder[i + j] = &remainder[i + j] - &divisor[j] * &coeff;
         }
     }
 
