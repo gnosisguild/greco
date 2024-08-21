@@ -445,21 +445,21 @@ def main(args):
         p2i_bound = int((qis[i] - 1) / 2)
         p2_bounds.append(p2i_bound)
         assert all(coeff >= -p2i_bound and coeff <= p2i_bound for coeff in p2is[i].coefficients)
-        # After the circuit assignement, the coefficients of r2i_assigned must be in [0, p2i_bound] or [p - p2i_bound, p - 1] 
+        # After the circuit assignement, the coefficients of p2i_assigned must be in [0, p2i_bound] or [p - p2i_bound, p - 1] 
         assert all(coeff in range(0, int(p2i_bound) + 1) or coeff in range(p - int(p2i_bound), p) for coeff in p2is_assigned[i].coefficients)
-        # To perform a range check with a smaller lookup table, we shift the coefficients of r2i_assigned to be in [0, 2*p2i_bound] (the shift operation is constrained inside the circuit)
+        # To perform a range check with a smaller lookup table, we shift the coefficients of p2i_assigned to be in [0, 2*p2i_bound] (the shift operation is constrained inside the circuit)
         p2i_shifted = Polynomial([(coeff + int(p2i_bound)) % p for coeff in p2is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*p2i_bound for coeff in p2i_shifted.coefficients)
 
-        # constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}]$
+        # constraint. The coefficients of (ct1i - ct1i_hat - p2i * cyclo) / qi = p1i should be in the range $[\frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B)}{q_i}, \frac{(N+2) \cdot \frac{q_i - 1}{2} + B}{q_i}]$
         p1i_bound = (int((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i]
         # round bound to the nearest integer
         p1i_bound = int(p1i_bound)
         p1_bounds.append(p1i_bound)
         assert all(coeff >= -p1i_bound and coeff <= p1i_bound for coeff in p1is[i].coefficients)
-        # After the circuit assignement, the coefficients of r1i_assigned must be in [0, p1i_bound] or [p - p1i_bound, p - 1]
+        # After the circuit assignement, the coefficients of p1i_assigned must be in [0, p1i_bound] or [p - p1i_bound, p - 1]
         assert all(coeff in range(0, int(p1i_bound) + 1) or coeff in range(p - int(p1i_bound), p) for coeff in p1is_assigned[i].coefficients)
-        # To perform a range check with a smaller lookup table, we shift the coefficients of r1i_assigned to be in [0, 2*p1i_bound] (the shift operation is constrained inside the circuit)
+        # To perform a range check with a smaller lookup table, we shift the coefficients of p1i_assigned to be in [0, 2*p1i_bound] (the shift operation is constrained inside the circuit)
         p1i_shifted = Polynomial([(coeff + int(p1i_bound)) % p for coeff in p1is_assigned[i].coefficients])
         assert all(coeff >= 0 and coeff <= 2*p1i_bound for coeff in p1i_shifted.coefficients)
 
