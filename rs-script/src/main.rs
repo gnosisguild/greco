@@ -1,7 +1,7 @@
 use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, PublicKey, SecretKey};
 use fhe_math::rq::{ Poly, Representation};
 use fhe_traits::FheEncoder;
-use num_bigint::{BigInt, BigUint};
+use num_bigint::BigInt;
 use num_traits::{Num, ToPrimitive, Zero};
 use rand::thread_rng;
 use serde_json::json;
@@ -44,7 +44,7 @@ fn main() {
     let mut k1: Vec<BigInt> = scalar_mul(&pt_bigint, &q);
     reduce_and_center_coefficients(&mut k1, &BigInt::from(plaintext_modulus));
 
-    let p = BigUint::from_str_radix(
+    let p = BigInt::from_str_radix(
         "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         10,
     )
@@ -148,19 +148,43 @@ fn main() {
         r2is.push(r2i);
         r1is.push(r1i);
     }
+
+    for r2i in r2is.iter_mut() {
+        add_p_and_modulo(r2i, &p);
+    }
+    for r1i in r1is.iter_mut() {
+        add_p_and_modulo(r1i, &p);
+    }
+    for p2i in p2is.iter_mut() {
+        add_p_and_modulo(p2i, &p);
+    }
+    for p1i in p1is.iter_mut() {
+        add_p_and_modulo(p1i, &p);
+    }
+    add_p_and_modulo(&mut k1, &p);
+
+
+    let pk_array_assigned = add_p_and_modulo_poly(&pk_array, &p);
+    let pk1_array_assigned = add_p_and_modulo_poly(&pk1_array, &p);
+    let u_assigned = add_p_and_modulo_poly(&u, &p);
+    let e0_assigned = add_p_and_modulo_poly(&e0, &p);
+    let e1_assigned = add_p_and_modulo_poly(&e1, &p);
+    let ct0_assigned = add_p_and_modulo_poly(&ct0, &p);
+    let ct1_assigned = add_p_and_modulo_poly(&ct1, &p);
+
     let json_data = json!({
-        "pk0_qi": to_string_poly(&pk_array),
-        "pk1_qi": to_string_poly(&pk1_array),
-        "u": to_string_poly(&u),
-        "e0": to_string_poly(&e0),
-        "e1": to_string_poly(&e1),
+        "pk0_qi": to_string_2d_vec(&pk_array_assigned),
+        "pk1_qi": to_string_2d_vec(&pk1_array_assigned),
+        "u": to_string_2d_vec(&u_assigned),
+        "e0": to_string_2d_vec(&e0_assigned),
+        "e1": to_string_2d_vec(&e1_assigned),
         "k1": to_string_1d_vec(&k1),
         "r2is": to_string_2d_vec(&r2is),
         "r1is": to_string_2d_vec(&r1is),
         "p2is": to_string_2d_vec(&p2is),
         "p1is": to_string_2d_vec(&p1is),
-        "ct0is": to_string_poly(&ct0),
-        "ct1is": to_string_poly(&ct1)
+        "ct0is": to_string_2d_vec(&ct0_assigned),
+        "ct1is": to_string_2d_vec(&ct1_assigned)
     });
 
     fs::write("output.json", json_data.to_string()).unwrap();
@@ -267,12 +291,29 @@ fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt)
     }
 }
 
-fn to_string_poly(poly: &Poly) -> Vec<Vec<String>> {
+fn add_p_and_modulo(coefficients: &mut [BigInt], p: &BigInt) {
+    for coeff in coefficients.iter_mut() {
+        *coeff += p;
+        *coeff %= p;
+    }
+}
+
+fn add_p_and_modulo_poly(poly: &Poly, p: &BigInt) -> Vec<Vec<BigInt>> {
     poly.coefficients()
         .outer_iter()
-        .map(|row| row.iter().map(|coef| coef.to_string()).collect())
+        .map(|row| {
+            row.iter()
+                .map(|&coef| {
+                    let mut big_int_coef = BigInt::from(coef);
+                    big_int_coef += p;
+                    big_int_coef %= p;
+                    big_int_coef
+                })
+                .collect::<Vec<BigInt>>()
+        })
         .collect()
 }
+
 fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
     poly.iter().map(|coef| coef.to_string()).collect()
 }
