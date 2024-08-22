@@ -1,2 +1,1 @@
-bfv @ git+https://github.com/enricobottazzi/bfv-py.git@e8239e946cab58c5c9fc974ff726010b71d92dbf
-numpy<2.1,>=1.22
+git+https://github.com/gnosisguild/bfv-py@no-ntt#egg=bfv
