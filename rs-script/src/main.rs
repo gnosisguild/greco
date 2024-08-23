@@ -1,11 +1,14 @@
 use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, PublicKey, SecretKey};
 use fhe_math::rq::{Poly, Representation};
+use fhe_math::zq::Modulus;
 use fhe_traits::FheEncoder;
+use itertools::izip;
+use ndarray::{s, Array1, Array2, ArrayView2};
 use num_bigint::BigInt;
 use num_traits::{Num, ToPrimitive, Zero};
 use rand::thread_rng;
 use serde_json::json;
-use std::ops::Neg;
+use std::ops::Deref;
 use std::{fs, vec};
 
 fn main() {
@@ -30,19 +33,70 @@ fn main() {
     // Encrypt the input plaintext
     let input: Vec<u64> = vec![0, 1];
     let pt = Plaintext::try_encode(&input, Encoding::poly(), &params).unwrap();
-    let (ct, mut u, mut e0, mut e1) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
-
-    // Convert the representations of the ciphertexts and key components
-    u.change_representation(Representation::PowerBasis);
-    e0.change_representation(Representation::PowerBasis);
-    e1.change_representation(Representation::PowerBasis);
+    let (ct, mut u_rns, mut e0_rns, mut e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
     // Perform the required computations
     let ctx = params.ctx_at_level(pt.level()).unwrap();
-    let q = BigInt::from(ctx.rns.product.clone());
-    let pt_bigint: Vec<BigInt> = pt.value.iter().map(|&x| BigInt::from(x)).collect();
-    let mut k1: Vec<BigInt> = scalar_mul(&pt_bigint, &q);
-    reduce_and_center_coefficients(&mut k1, &BigInt::from(plaintext_modulus));
+    let t = Modulus::new(params.plaintext()).unwrap();
+
+    // Build k0qi for each qi
+    let mut k0q = vec![]; // [ -t^{-1} mod q0, -t^{-1} mod q1, ... , -t^{-1} mod q{k-1} ]
+    for qi in ctx.moduli_operators() {
+        k0q.push(qi.inv(qi.neg(t.modulus())).unwrap())
+    }
+
+    // Build k1 (independent of qi)
+    let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
+    let mut k1_u64 = pt.value.deref().to_vec(); // m
+    t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
+    let mut k1: Vec<BigInt> = k1_u64.into_iter().map(BigInt::from).collect(); // for now
+
+    // Extract single vectors of u, e1, and e2, as Vec<BigInt>
+    u_rns.change_representation(Representation::PowerBasis);
+    e0_rns.change_representation(Representation::PowerBasis);
+    e1_rns.change_representation(Representation::PowerBasis);
+    let u_bigint: Vec<BigInt> = unsafe {
+        ctx.moduli_operators()[0]
+            .center_vec_vt(u_rns.coefficients().row(0).as_slice().unwrap())
+            .into_iter()
+            .map(BigInt::from)
+            .collect()
+    };
+
+    let e0_bigint: Vec<BigInt> = unsafe {
+        ctx.moduli_operators()[0]
+            .center_vec_vt(e0_rns.coefficients().row(0).as_slice().unwrap())
+            .into_iter()
+            .map(BigInt::from)
+            .collect()
+    };
+
+    let e1_bigint: Vec<BigInt> = unsafe {
+        ctx.moduli_operators()[0]
+            .center_vec_vt(e1_rns.coefficients().row(0).as_slice().unwrap())
+            .into_iter()
+            .map(BigInt::from)
+            .collect()
+    };
+
+    let mut r2is = Vec::new();
+    let mut r1is = Vec::new();
+    let mut p1is = Vec::new();
+    let mut p2is = Vec::new();
+
+    let mut ct0 = ct.c[0].clone();
+    let mut ct1 = ct.c[1].clone();
+    ct0.change_representation(Representation::PowerBasis);
+    ct1.change_representation(Representation::PowerBasis);
+
+    let mut pk0: Poly = pk.c.c[0].clone();
+    let mut pk1: Poly = pk.c.c[1].clone();
+    pk0.change_representation(Representation::PowerBasis);
+    pk1.change_representation(Representation::PowerBasis);
+
+    let mut cyclo = vec![BigInt::from(0u64); (degree + 1) as usize];
+    cyclo[0] = BigInt::from(1u64); // x^0 term
+    cyclo[degree as usize] = BigInt::from(1u64); // x^(N) term
 
     let p = BigInt::from_str_radix(
         "21888242871839275222246405745257275088548364400416034343698204186575808495617",
@@ -50,132 +104,69 @@ fn main() {
     )
     .unwrap();
 
-    let mut r2is = Vec::new();
-    let mut r1is = Vec::new();
-    let mut p1is = Vec::new();
-    let mut p2is = Vec::new();
-
-    let mut ct0: Poly = ct.c[0].clone();
-    ct0.change_representation(Representation::PowerBasis);
-    let mut ct1: Poly = ct.c[1].clone();
-    ct1.change_representation(Representation::PowerBasis);
-
-    let mut pk_array: Poly = pk.c.c[0].clone();
-    pk_array.change_representation(Representation::PowerBasis);
-    let mut pk1_array: Poly = pk.c.c[1].clone();
-    pk1_array.change_representation(Representation::PowerBasis);
-
-    let mut cyclo = vec![BigInt::from(0u64); (degree + 1) as usize];
-    cyclo[0] = BigInt::from(1u64); // x^0 term
-    cyclo[degree as usize] = BigInt::from(1u64); // x^(n-1) term
-
     // Perform the main computation logic
-    for (modulus_index, (ct0_coeffs, ct1_coeffs)) in ct0
-        .coefficients()
-        .outer_iter()
-        .zip(ct1.coefficients().outer_iter())
-        .enumerate()
+    for (i, (ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs)) in izip!(
+        ct0.coefficients().outer_iter(),
+        ct1.coefficients().outer_iter(),
+        pk0.coefficients().outer_iter(),
+        pk1.coefficients().outer_iter(),
+    )
+    .enumerate()
     {
         // Compute the required values for each modulus
         let ct0i: Vec<BigInt> = ct0_coeffs.iter().map(|&x| BigInt::from(x)).collect();
         let ct1i: Vec<BigInt> = ct1_coeffs.iter().map(|&x| BigInt::from(x)).collect();
-        let pk0: Vec<BigInt> = pk_array
-            .coefficients()
-            .outer_iter()
-            .nth(modulus_index)
-            .unwrap()
-            .iter()
-            .map(|&x| BigInt::from(x))
-            .collect();
-        let pk1: Vec<BigInt> = pk1_array
-            .coefficients()
-            .outer_iter()
-            .nth(modulus_index)
-            .unwrap()
-            .iter()
-            .map(|&x| BigInt::from(x))
-            .collect();
-        let ui: Vec<BigInt> = u
-            .coefficients()
-            .outer_iter()
-            .nth(modulus_index)
-            .unwrap()
-            .iter()
-            .map(|&x| BigInt::from(x))
-            .collect();
-        let e0i: Vec<BigInt> = e0
-            .coefficients()
-            .outer_iter()
-            .nth(modulus_index)
-            .unwrap()
-            .iter()
-            .map(|&x| BigInt::from(x))
-            .collect();
-        let e1i: Vec<BigInt> = e1
-            .coefficients()
-            .outer_iter()
-            .nth(modulus_index)
-            .unwrap()
-            .iter()
-            .map(|&x| BigInt::from(x))
-            .collect();
+        let pk0i: Vec<BigInt> = pk0_coeffs.iter().map(|&x| BigInt::from(x)).collect();
+        let pk1i: Vec<BigInt> = pk1_coeffs.iter().map(|&x| BigInt::from(x)).collect();
 
-        let k0i: u64 = BigInt::from(plaintext_modulus)
-            .neg()
-            .modinv(&BigInt::from(moduli[modulus_index]))
-            .unwrap()
-            .to_u64()
-            .unwrap();
-
-
-        let k1i = scalar_mul(&k1, &BigInt::from(k0i));
+        let k1i = scalar_mul(&k1, &BigInt::from(k0q[i]));
         // Calculate ct0i_hat = pk0 * ui + (e0i + k1i)
         let ct0i_hat = {
-            let pk0_ui = poly_mul(pk0, ui.clone());
-            let e0i_k1i = poly_add(e0i, k1i);
-            poly_add(pk0_ui, e0i_k1i)
+            let pk0_ui = poly_mul(&pk0i, &u_bigint);
+            let e0i_k1i = poly_add(&e0_bigint, &k1i);
+            poly_add(&pk0_ui, &e0i_k1i)
         };
-        
+
         // Compute num = ct0i - ct0i_hat
-        let mut num = poly_sub(ct0i.clone(), ct0i_hat.clone());
-        
+        let mut num = poly_sub(&ct0i, &ct0i_hat);
+
         // Center coefficients of num with respect to the current modulus
-        reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[modulus_index]));
-        
+        reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[i]));
+
         // Compute r2i as the quotient of num divided by the cyclotomic polynomial
         let (r2i, _) = poly_div(&num, &cyclo.clone());
-        
+
         // Calculate r1i using r2i and cyclo
         let adjusted_num = {
-            let r2i_cyclo = poly_mul(r2i.clone(), cyclo.clone());
-            let ct0i_ct0i_hat = poly_sub(ct0i.clone(), ct0i_hat.clone());
-            poly_sub(ct0i_ct0i_hat, r2i_cyclo)
+            let r2i_cyclo = poly_mul(&r2i, &cyclo);
+            let ct0i_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
+            poly_sub(&ct0i_ct0i_hat, &r2i_cyclo)
         };
-        let (r1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[modulus_index])]);
-        
+        let (r1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[i])]);
+
         // Calculate ct1i_hat = pk1 * ui + e1i
         let ct1i_hat = {
-            let pk1_ui = poly_mul(pk1, ui);
-            poly_add(pk1_ui, e1i)
+            let pk1_ui = poly_mul(&pk1i, &u_bigint);
+            poly_add(&pk1_ui, &e1_bigint)
         };
-        
+
         // Compute num = ct1i - ct1i_hat
-        let mut num = poly_sub(ct1i.clone(), ct1i_hat.clone());
-        
+        let mut num = poly_sub(&ct1i, &ct1i_hat);
+
         // Center coefficients of num with respect to the current modulus
-        reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[modulus_index]));
-        
+        reduce_and_center_coefficients(&mut num, &BigInt::from(moduli[i]));
+
         // Compute p2i as the quotient of num divided by the cyclotomic polynomial
         let (p2i, _) = poly_div(&num, &cyclo.clone());
-        
+
         // Calculate p1i using p2i and cyclo
         let adjusted_num = {
-            let p2i_cyclo = poly_mul(p2i.clone(), cyclo.clone());
-            let ct1i_ct1i_hat = poly_sub(ct1i.clone(), ct1i_hat.clone());
-            poly_sub(ct1i_ct1i_hat, p2i_cyclo)
+            let p2i_cyclo = poly_mul(&p2i, &cyclo);
+            let ct1i_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
+            poly_sub(&ct1i_ct1i_hat, &p2i_cyclo)
         };
-        let (p1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[modulus_index])]);
-        
+        let (p1i, _) = poly_div(&adjusted_num, &[BigInt::from(moduli[i])]);
+
         p2is.push(p2i);
         p1is.push(p1i);
         r2is.push(r2i);
@@ -196,11 +187,11 @@ fn main() {
     }
     add_p_and_modulo(&mut k1, &p);
 
-    let pk_array_assigned = add_p_and_modulo_poly(&pk_array, &p);
-    let pk1_array_assigned = add_p_and_modulo_poly(&pk1_array, &p);
-    let u_assigned = add_p_and_modulo_poly(&u, &p);
-    let e0_assigned = add_p_and_modulo_poly(&e0, &p);
-    let e1_assigned = add_p_and_modulo_poly(&e1, &p);
+    let pk_array_assigned = add_p_and_modulo_poly(&pk0, &p);
+    let pk1_array_assigned = add_p_and_modulo_poly(&pk1, &p);
+    let u_assigned = add_p_and_modulo_poly(&u_rns, &p);
+    let e0_assigned = add_p_and_modulo_poly(&e0_rns, &p);
+    let e1_assigned = add_p_and_modulo_poly(&e1_rns, &p);
     let ct0_assigned = add_p_and_modulo_poly(&ct0, &p);
     let ct1_assigned = add_p_and_modulo_poly(&ct1, &p);
 
@@ -227,7 +218,24 @@ fn main() {
     .unwrap();
 }
 
-fn poly_add(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
+fn center_array_rows(array: ArrayView2<u64>, q: &[Modulus]) -> Array2<i64> {
+    let (num_rows, num_cols) = array.dim();
+
+    // Create a new Array2<i64> with zeros
+    let mut result = Array2::<i64>::zeros((num_rows, num_cols));
+
+    // Iterate over each row, center it, and assign the result to the new array
+    for (i, row) in array.outer_iter().enumerate() {
+        let centered_row = unsafe { q[i].center_vec_vt(row.as_slice().unwrap()) };
+        result
+            .slice_mut(s![i, ..])
+            .assign(&Array1::from(centered_row));
+    }
+
+    result
+}
+
+fn poly_add(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
     let max_length = std::cmp::max(poly1.len(), poly2.len());
 
     let mut result = vec![BigInt::zero(); max_length];
@@ -249,7 +257,7 @@ fn poly_add(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
     result
 }
 
-fn poly_sub(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
+fn poly_sub(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
     let max_length = std::cmp::max(poly1.len(), poly2.len());
 
     let mut result = vec![BigInt::zero(); max_length];
@@ -271,7 +279,7 @@ fn poly_sub(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
     result
 }
 
-fn poly_mul(poly1: Vec<BigInt>, poly2: Vec<BigInt>) -> Vec<BigInt> {
+fn poly_mul(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
     let product_len = poly1.len() + poly2.len() - 1;
     let mut product = vec![BigInt::zero(); product_len];
 
