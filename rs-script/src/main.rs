@@ -41,13 +41,13 @@ fn main() {
     let ctx = params.ctx_at_level(pt.level()).unwrap().clone();
     let t = Modulus::new(params.plaintext()).unwrap();
 
-    // Calculate k1 (independent of qi)
+    // Calculate k1 (independent of qi), and reverse
     let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
     let mut k1_u64 = pt.value.deref().to_vec(); // m
     t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
-    let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).collect(); // for now
+    let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).rev().collect();
 
-    // Extract single vectors of u, e1, and e2, as Vec<BigInt>
+    // Extract single vectors of u, e1, and e2, as Vec<BigInt>, and reverse
     u_rns.change_representation(Representation::PowerBasis);
     e0_rns.change_representation(Representation::PowerBasis);
     e1_rns.change_representation(Representation::PowerBasis);
@@ -56,6 +56,7 @@ fn main() {
             .center_vec_vt(u_rns.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
+            .rev()
             .collect()
     };
 
@@ -64,6 +65,7 @@ fn main() {
             .center_vec_vt(e0_rns.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
+            .rev()
             .collect()
     };
 
@@ -72,6 +74,7 @@ fn main() {
             .center_vec_vt(e1_rns.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
+            .rev()
             .collect()
     };
 
@@ -88,8 +91,8 @@ fn main() {
 
     // Create cyclotomic polynomial x^N + 1
     let mut cyclo = vec![BigInt::from(0u64); (N + 1) as usize];
-    cyclo[0] = BigInt::from(1u64); // x^0 term
-    cyclo[N as usize] = BigInt::from(1u64); // x^(N) term
+    cyclo[0] = BigInt::from(1u64); // x^N term
+    cyclo[N as usize] = BigInt::from(1u64); // x^0 term
 
     // Initialize zk proving modulus
     let p = BigInt::from_str_radix(
@@ -112,18 +115,18 @@ fn main() {
     )
     .enumerate()
     {
-        // Compute the required values for each modulus
-        let ct0i: Vec<BigInt> = ct0_coeffs.iter().map(|&x| BigInt::from(x)).collect();
-        let ct1i: Vec<BigInt> = ct1_coeffs.iter().map(|&x| BigInt::from(x)).collect();
-        let pk0i: Vec<BigInt> = pk0_coeffs.iter().map(|&x| BigInt::from(x)).collect();
-        let pk1i: Vec<BigInt> = pk1_coeffs.iter().map(|&x| BigInt::from(x)).collect();
+        // Convert to vectors of bigint and reverse order.
+        let ct0i: Vec<BigInt> = ct0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+        let ct1i: Vec<BigInt> = ct1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+        let pk0i: Vec<BigInt> = pk0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+        let pk1i: Vec<BigInt> = pk1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
 
         // k0qi = -t^{-1} mod qi
         let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
         let k0qi = BigInt::from(koqi_u64);
 
         // k1 * k0qi as big int
-        let ki = scalar_mul(&k1, &k0qi);
+        let ki = poly_scalar_mul(&k1, &k0qi);
 
         // Calculate ct0i_hat = pk0 * ui + e0i + ki
         let ct0i_hat = {
@@ -144,8 +147,12 @@ fn main() {
         // Compute r2i as the quotient of numerator divided by the
         // cyclotomic polynomial, and reduce/center the resulting
         // coefficients to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi
-        let (mut r2i, _) = poly_div(&ct0i_minus_ct0i_hat, &cyclo);
+        let (mut r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat, &cyclo);
         assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
+        assert_eq!(
+            ct0i_minus_ct0i_hat,
+            poly_add(&poly_mul(&r2i, &cyclo), &r2i_rem)
+        );
         reduce_and_center_coefficients(&mut r2i, &BigInt::from(qi.modulus()));
 
         // Calculate r1i using r2i and cyclo
@@ -156,8 +163,12 @@ fn main() {
             poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo)
         };
         assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
-        let (r1i, _) = poly_div(&r1i_num, &[BigInt::from(qi.modulus())]);
+        let (r1i, r1i_rem) = poly_div(&r1i_num, &[BigInt::from(qi.modulus())]);
         assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
+        assert_eq!(
+            r1i_num,
+            poly_add(&poly_mul(&r1i, &[BigInt::from(qi.modulus())]), &r1i_rem)
+        );
 
         // Calculate ct1i_hat = pk1i * ui + e1i
         let ct1i_hat = {
@@ -169,14 +180,18 @@ fn main() {
         assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
 
         // Compute p2i numerator = ct1i - ct1i_hat
-        let mut ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
+        let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
         assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
 
         // Compute p2i as the quotient of numerator divided by the
         // cyclotomic polynomial, and reduce/center the resulting
         // coefficients to produce: (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi
-        let (mut p2i, _) = poly_div(&ct1i_minus_ct1i_hat, &cyclo.clone());
+        let (mut p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat, &cyclo.clone());
         assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
+        assert_eq!(
+            ct1i_minus_ct1i_hat,
+            poly_add(&poly_mul(&p2i, &cyclo), &p2i_rem)
+        );
         reduce_and_center_coefficients(&mut p2i, &BigInt::from(moduli[i]));
 
         // Calculate p1i using p2i and cyclo
@@ -187,8 +202,12 @@ fn main() {
             poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo)
         };
         assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
-        let (p1i, _) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
+        let (p1i, p1i_rem) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
         assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
+        assert_eq!(
+            p1i_num,
+            poly_add(&poly_mul(&p1i, &[BigInt::from(qi.modulus())]), &p1i_rem)
+        );
 
         r2is.push(r2i);
         r1is.push(r1i);
@@ -241,68 +260,94 @@ fn main() {
     .unwrap();
 }
 
-fn center_array_rows(array: ArrayView2<u64>, q: &[Modulus]) -> Array2<i64> {
-    let (num_rows, num_cols) = array.dim();
-
-    // Create a new Array2<i64> with zeros
-    let mut result = Array2::<i64>::zeros((num_rows, num_cols));
-
-    // Iterate over each row, center it, and assign the result to the new array
-    for (i, row) in array.outer_iter().enumerate() {
-        let centered_row = unsafe { q[i].center_vec_vt(row.as_slice().unwrap()) };
-        result
-            .slice_mut(s![i, ..])
-            .assign(&Array1::from(centered_row));
-    }
-
-    result
-}
-
-fn poly_add(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
+/// Adds two polynomials represented as vectors of `BigInt` coefficients in descending order of powers.
+///
+/// This function aligns two polynomials of potentially different lengths and adds their coefficients.
+/// It assumes that polynomials are represented from leading degree to degree zero, even if the
+/// coefficient at degree zero is zero. Leading zeros are not removed to keep the order of the
+/// polynomial correct, which in Greco's case is necessary so that the order can be checked.
+///
+/// # Arguments
+///
+/// * `poly1` - Coefficients of the first polynomial, from highest to lowest degree.
+/// * `poly2` - Coefficients of the second polynomial, from highest to lowest degree.
+///
+/// # Returns
+///
+/// A vector of `BigInt` coefficients representing the sum of the two polynomials.
+fn poly_add(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
+    // Determine the new length and create extended polynomials
     let max_length = std::cmp::max(poly1.len(), poly2.len());
+    let mut extended_poly1 = vec![BigInt::zero(); max_length];
+    let mut extended_poly2 = vec![BigInt::zero(); max_length];
 
+    // Copy original coefficients into extended vectors
+    extended_poly1[max_length - poly1.len()..].clone_from_slice(poly1);
+    extended_poly2[max_length - poly2.len()..].clone_from_slice(poly2);
+
+    // Add the coefficients
     let mut result = vec![BigInt::zero(); max_length];
-
     for i in 0..max_length {
-        let p1 = if i < poly1.len() {
-            &poly1[i]
-        } else {
-            &BigInt::zero()
-        };
-        let p2 = if i < poly2.len() {
-            &poly2[i]
-        } else {
-            &BigInt::zero()
-        };
-        result[i] = p1 + p2;
+        result[i] = &extended_poly1[i] + &extended_poly2[i];
     }
 
     result
 }
 
-fn poly_sub(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
-    let max_length = std::cmp::max(poly1.len(), poly2.len());
-
-    let mut result = vec![BigInt::zero(); max_length];
-
-    for i in 0..max_length {
-        let p1 = if i < poly1.len() {
-            &poly1[i]
-        } else {
-            &BigInt::zero()
-        };
-        let p2 = if i < poly2.len() {
-            &poly2[i]
-        } else {
-            &BigInt::zero()
-        };
-        result[i] = p1 - p2;
-    }
-
-    result
+/// Negates the coefficients of a polynomial represented as a slice of `BigInt` coefficients.
+///
+/// This function creates a new polynomial where each coefficient is the negation of the corresponding
+/// coefficient in the input polynomial.
+///
+/// # Arguments
+///
+/// * `poly` - A slice of `BigInt` representing the coefficients of the polynomial, with the highest
+///   degree term at index 0 and the constant term at the end.
+///
+/// # Returns
+///
+/// A vector of `BigInt` representing the polynomial with negated coefficients, with the same degree
+/// order as the input polynomial.
+fn poly_neg(poly: &[BigInt]) -> Vec<BigInt> {
+    poly.iter().map(|x| -x).collect()
 }
 
-fn poly_mul(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
+/// Subtracts one polynomial from another, both represented as slices of `BigInt` coefficients in descending order.
+///
+/// This function subtracts the second polynomial (`poly2`) from the first polynomial (`poly1`). It does so
+/// by first negating the coefficients of `poly2` and then adding the result to `poly1`.
+///
+/// # Arguments
+///
+/// * `poly1` - A slice of `BigInt` representing the coefficients of the first polynomial (minuend), with
+///   the highest degree term at index 0 and the constant term at the end.
+/// * `poly2` - A slice of `BigInt` representing the coefficients of the second polynomial (subtrahend), with
+///   the highest degree term at index 0 and the constant term at the end.
+///
+/// # Returns
+///
+/// A vector of `BigInt` representing the coefficients of the resulting polynomial after subtraction.
+fn poly_sub(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
+    poly_add(poly1, &poly_neg(poly2))
+}
+
+/// Multiplies two polynomials represented as slices of `BigInt` coefficients naively.
+///
+/// Given two polynomials `poly1` and `poly2`, where each polynomial is represented by a slice of
+/// coefficients, this function computes their product. The order of coefficients (ascending or
+/// descending powers) should be the same for both input polynomials. The resulting polynomial is
+/// returned as a vector of `BigInt` coefficients in the same order as the inputs.
+///
+/// # Arguments
+///
+/// * `poly1` - A slice of `BigInt` representing the coefficients of the first polynomial.
+/// * `poly2` - A slice of `BigInt` representing the coefficients of the second polynomial.
+///
+/// # Returns
+///
+/// A vector of `BigInt` representing the coefficients of the resulting polynomial after multiplication,
+/// in the same order as the input polynomials.
+fn poly_mul(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
     let product_len = poly1.len() + poly2.len() - 1;
     let mut product = vec![BigInt::zero(); product_len];
 
@@ -314,6 +359,31 @@ fn poly_mul(poly1: &Vec<BigInt>, poly2: &Vec<BigInt>) -> Vec<BigInt> {
 
     product
 }
+
+/// Divides one polynomial by another, returning the quotient and remainder, with both polynomials
+/// represented by vectors of `BigInt` coefficients in descending order of powers.
+///
+/// Given two polynomials `dividend` and `divisor`, where each polynomial is represented by a vector
+/// of coefficients in descending order of powers (i.e., the coefficient at index `i` corresponds
+/// to the term of degree `n - i`, where `n` is the degree of the polynomial), this function computes
+/// their quotient and remainder. The quotient and remainder are also represented in descending order
+/// of powers.
+///
+/// # Arguments
+///
+/// * `dividend` - A slice of `BigInt` representing the coefficients of the dividend polynomial.
+/// * `divisor` - A slice of `BigInt` representing the coefficients of the divisor polynomial. The leading
+///   coefficient (highest degree term) must be non-zero.
+///
+/// # Returns
+///
+/// A tuple containing two vectors of `BigInt`:
+/// * The first vector represents the quotient polynomial, with coefficients in descending order of powers.
+/// * The second vector represents the remainder polynomial, also in descending order of powers.
+///
+/// # Panics
+///
+/// This function will panic if the divisor is empty or if the leading coefficient of the divisor is zero.
 fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<BigInt>) {
     assert!(
         !divisor.is_empty() && !divisor[0].is_zero(),
@@ -339,7 +409,22 @@ fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<BigInt
     (quotient, remainder)
 }
 
-fn scalar_mul(poly: &[BigInt], scalar: &BigInt) -> Vec<BigInt> {
+/// Multiplies each coefficient of a polynomial by a scalar.
+///
+/// This function takes a polynomial represented as a vector of `BigInt` coefficients and multiplies each
+/// coefficient by a given scalar.
+///
+/// # Arguments
+///
+/// * `poly` - A slice of `BigInt` representing the coefficients of the polynomial, with the highest degree term
+///   at index 0 and the constant term at the end.
+/// * `scalar` - A `BigInt` representing the scalar by which each coefficient of the polynomial will be multiplied.
+///
+/// # Returns
+///
+/// A vector of `BigInt` representing the polynomial with each coefficient multiplied by the scalar, maintaining
+/// the same order of coefficients as the input polynomial.
+fn poly_scalar_mul(poly: &[BigInt], scalar: &BigInt) -> Vec<BigInt> {
     poly.iter().map(|coeff| coeff * scalar).collect()
 }
 
