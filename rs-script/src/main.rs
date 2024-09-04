@@ -149,27 +149,27 @@ fn main() {
         assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
 
         // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
-        let mut ct0i_hat_copy = ct0i_hat.clone();
-        reduce_in_ring(&mut ct0i_hat_copy, &cyclo, &qi_bigint);
-        assert_eq!(&ct0i, &ct0i_hat_copy);
+        let mut ct0i_hat_mod_Rqi = ct0i_hat.clone();
+        reduce_in_ring(&mut ct0i_hat_mod_Rqi, &cyclo, &qi_bigint);
+        assert_eq!(&ct0i, &ct0i_hat_mod_Rqi);
 
         // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
         let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
         assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
-        let mut r2i_num = ct0i_minus_ct0i_hat.clone();
-        reduce_and_center_coefficients(&mut r2i_num, &qi_bigint);
+        let mut ct0i_minus_ct0i_hat_mod_Zqi = ct0i_minus_ct0i_hat.clone();
+        reduce_and_center_coefficients(&mut ct0i_minus_ct0i_hat_mod_Zqi, &qi_bigint);
 
         // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
         // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-        let (r2i, r2i_rem) = poly_div(&r2i_num, &cyclo);
+        let (r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat_mod_Zqi, &cyclo);
         assert!(r2i_rem.is_empty());
         assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
 
         // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
         let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
-        let mut r2i_times_cyclo_copy = r2i_times_cyclo.clone();
-        reduce_and_center_coefficients(&mut r2i_times_cyclo_copy, &qi_bigint);
-        assert_eq!(&r2i_num, &r2i_times_cyclo_copy);
+        let mut r2i_times_cyclo_mod_Zqi = r2i_times_cyclo.clone();
+        reduce_and_center_coefficients(&mut r2i_times_cyclo_mod_Zqi, &qi_bigint);
+        assert_eq!(&ct0i_minus_ct0i_hat_mod_Zqi, &r2i_times_cyclo_mod_Zqi);
         assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
 
         // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
@@ -183,13 +183,13 @@ fn main() {
 
         // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
         let r1i_times_qi = poly_scalar_mul(&r1i, &qi_bigint);
-        let mut ct0i_rhs = poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
+        let mut ct0i_calculated = poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
 
-        while ct0i_rhs.len() > 0 && ct0i_rhs[0].is_zero() {
-            ct0i_rhs.remove(0);
+        while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
+            ct0i_calculated.remove(0);
         }
 
-        assert_eq!(&ct0i, &ct0i_rhs);
+        assert_eq!(&ct0i, &ct0i_calculated);
 
         // --------------------------------------------------- ct1i ---------------------------------------------------
 
@@ -203,28 +203,28 @@ fn main() {
         assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
 
         // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
-        let mut ct1i_hat_copy = ct1i_hat.clone();
-        reduce_in_ring(&mut ct1i_hat_copy, &cyclo, &qi_bigint);
-        assert_eq!(&ct1i, &ct1i_hat_copy);
+        let mut ct1i_hat_mod_Rqi = ct1i_hat.clone();
+        reduce_in_ring(&mut ct1i_hat_mod_Rqi, &cyclo, &qi_bigint);
+        assert_eq!(&ct1i, &ct1i_hat_mod_Rqi);
 
         // Compute p2i numerator = ct1i - ct1i_hat
         let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
         assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
-        let mut ct1i_minus_ct1i_hat_mod_qi = ct1i_minus_ct1i_hat.clone();
-        reduce_and_center_coefficients(&mut ct1i_minus_ct1i_hat_mod_qi, &qi_bigint);
+        let mut ct1i_minus_ct1i_hat_mod_Zqi = ct1i_minus_ct1i_hat.clone();
+        reduce_and_center_coefficients(&mut ct1i_minus_ct1i_hat_mod_Zqi, &qi_bigint);
 
         // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
         // and reduce/center the resulting coefficients to produce:
         // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-        let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_qi, &cyclo.clone());
+        let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_Zqi, &cyclo.clone());
         assert!(p2i_rem.is_empty());
         assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
 
         // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
         let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
-        let mut p2i_times_cyclo_mod_qi = p2i_times_cyclo.clone();
-        reduce_and_center_coefficients(&mut p2i_times_cyclo_mod_qi, &qi_bigint);
-        assert_eq!(&ct1i_minus_ct1i_hat_mod_qi, &p2i_times_cyclo_mod_qi);
+        let mut p2i_times_cyclo_mod_Zqi = p2i_times_cyclo.clone();
+        reduce_and_center_coefficients(&mut p2i_times_cyclo_mod_Zqi, &qi_bigint);
+        assert_eq!(&ct1i_minus_ct1i_hat_mod_Zqi, &p2i_times_cyclo_mod_Zqi);
         assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
 
         // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
@@ -238,13 +238,13 @@ fn main() {
 
         // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
         let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
-        let mut ct1i_rhs = poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
+        let mut ct1i_calculated = poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
 
-        while ct1i_rhs.len() > 0 && ct1i_rhs[0].is_zero() {
-            ct1i_rhs.remove(0);
+        while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
+            ct1i_calculated.remove(0);
         }
 
-        assert_eq!(&ct1i, &ct1i_rhs);
+        assert_eq!(&ct1i, &ct1i_calculated);
 
         r2is.push(r2i);
         r1is.push(r1i);
