@@ -3,18 +3,18 @@ use fhe_math::rq::{Poly, Representation};
 use fhe_math::zq::Modulus;
 use fhe_traits::FheEncoder;
 use itertools::izip;
-use ndarray::{s, Array1, Array2, ArrayView2};
 use num_bigint::BigInt;
 use num_traits::{Num, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rayon::prelude::*;
 use serde_json::json;
 use std::ops::Deref;
 use std::{fs, vec};
 
 fn main() {
     // Set up the BFV parameters
-    let N: u64 = 128;
+    let N: u64 = 1024;
     let plaintext_modulus: u64 = 65537;
     let moduli: Vec<u64> = vec![0xffffffff00001, 0xfffffffe40001];
 
@@ -25,6 +25,9 @@ fn main() {
         .build_arc()
         .unwrap();
 
+    // Extract plaintext modulus
+    let t = Modulus::new(params.plaintext()).unwrap();
+
     // Use a seedable rng for experimental reproducibility
     let mut rng = StdRng::seed_from_u64(0);
 
@@ -32,14 +35,13 @@ fn main() {
     let sk = SecretKey::random(&params, &mut rng);
     let pk = PublicKey::new(&sk, &mut rng);
 
-    // Encrypt the input plaintext
-    let input: Vec<u64> = vec![0, 1];
-    let pt = Plaintext::try_encode(&input, Encoding::poly(), &params).unwrap();
+    // Sample a message and encrypt
+    let m = t.random_vec(N as usize, &mut rng);
+    let pt = Plaintext::try_encode(&m, Encoding::poly(), &params).unwrap();
     let (ct, mut u_rns, mut e0_rns, mut e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
-    // Extract parameters (context and plaintext modulus)
+    // Extract context
     let ctx = params.ctx_at_level(pt.level()).unwrap().clone();
-    let t = Modulus::new(params.plaintext()).unwrap();
 
     // Calculate k1 (independent of qi), center and reverse
     let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
@@ -101,155 +103,231 @@ fn main() {
     )
     .unwrap();
 
-    // Perform the main computation logic
-    let mut r2is = Vec::new();
-    let mut r1is = Vec::new();
-    let mut p2is = Vec::new();
-    let mut p1is = Vec::new();
-    for (i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs)) in izip!(
-        ctx.moduli_operators(),
-        ct0.coefficients().outer_iter(),
-        ct1.coefficients().outer_iter(),
-        pk0.coefficients().outer_iter(),
-        pk1.coefficients().outer_iter(),
+    // `r2is` are the polynomials r2i for each i-th CRT basis.
+    let mut r2is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `r1is` are the polynomials r1i for each i-th CRT basis.
+    let mut r1is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `kis` are the negative multiplicative inverses of t modulo each qi.
+    let mut k0is: Vec<BigInt> = vec![BigInt::zero(); params.moduli().len()];
+
+    // `ct0is` are the polynomials ct0i for each CRT basis.
+    let mut ct0is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `ct0is_hat` are the polynomials ct0i_hat for each CRT basis.
+    let mut ct0is_hat: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `ct1is` are the polynomials ct1i for each CRT basis.
+    let mut ct1is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `ct1is_hat` are the polynomials ct1i_hat for each CRT basis.
+    let mut ct1is_hat: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `pk0is` are the polynomials pk0 for each i-th CRT basis.
+    let mut pk0is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `pk1is` are the polynomials pk0 for each i-th CRT basis.
+    let mut pk1is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `p1is` are the polynomials p1i for each i-th CRT basis.
+    let mut p1is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    // `p2is` are the polynomials p2i for each i-th CRT basis.
+    let mut p2is: Vec<Vec<BigInt>> = vec![Vec::new(); params.moduli().len()];
+
+    let moduli_operators = ctx.moduli_operators();
+    let ct0_iter = ct0.coefficients();
+    let ct1_iter = ct1.coefficients();
+    let pk0_iter = pk0.coefficients();
+    let pk1_iter = pk1.coefficients();
+    let zipped: Vec<_> = izip!(
+        moduli_operators,
+        ct0_iter.outer_iter(),
+        ct1_iter.outer_iter(),
+        pk0_iter.outer_iter(),
+        pk1_iter.outer_iter()
     )
-    .enumerate()
+    .collect();
+
+    // Perform the main computation logic
+    let results: Vec<(
+        usize,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        BigInt,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+        Vec<BigInt>,
+    )> = zipped
+        .into_par_iter()
+        .enumerate()
+        .map(
+            |(i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs))| {
+                // --------------------------------------------------- ct0i ---------------------------------------------------
+
+                // Convert to vectors of bigint, center, and reverse order.
+                let mut ct0i: Vec<BigInt> =
+                    ct0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+                let mut ct1i: Vec<BigInt> =
+                    ct1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+                let mut pk0i: Vec<BigInt> =
+                    pk0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+                let mut pk1i: Vec<BigInt> =
+                    pk1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
+                let qi_bigint = BigInt::from(qi.modulus());
+                reduce_and_center_coefficients(&mut ct0i, &qi_bigint);
+                reduce_and_center_coefficients(&mut ct1i, &qi_bigint);
+                reduce_and_center_coefficients(&mut pk0i, &qi_bigint);
+                reduce_and_center_coefficients(&mut pk1i, &qi_bigint);
+
+                // k0qi = -t^{-1} mod qi
+                let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
+                let k0qi = BigInt::from(koqi_u64);
+
+                // ki = k1 * k0qi, center
+                let mut ki = poly_scalar_mul(&k1, &k0qi);
+                reduce_and_center_coefficients(&mut ki, &qi_bigint);
+
+                // Calculate ct0i_hat = pk0 * ui + e0i + ki
+                let ct0i_hat = {
+                    let pk0i_times_u = poly_mul(&pk0i, &u);
+                    assert_eq!((pk0i_times_u.len() as u64) - 1, 2 * (N - 1));
+
+                    let e0_plus_ki = poly_add(&e0, &ki);
+                    assert_eq!((e0_plus_ki.len() as u64) - 1, N - 1);
+
+                    poly_add(&pk0i_times_u, &e0_plus_ki)
+                };
+                assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
+
+                // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
+                let mut ct0i_hat_mod_Rqi = ct0i_hat.clone();
+                reduce_in_ring(&mut ct0i_hat_mod_Rqi, &cyclo, &qi_bigint);
+                assert_eq!(&ct0i, &ct0i_hat_mod_Rqi);
+
+                // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
+                let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
+                assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
+                let mut ct0i_minus_ct0i_hat_mod_Zqi = ct0i_minus_ct0i_hat.clone();
+                reduce_and_center_coefficients(&mut ct0i_minus_ct0i_hat_mod_Zqi, &qi_bigint);
+
+                // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
+                // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                let (r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat_mod_Zqi, &cyclo);
+                assert!(r2i_rem.is_empty());
+                assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
+
+                // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
+                let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
+                let mut r2i_times_cyclo_mod_Zqi = r2i_times_cyclo.clone();
+                reduce_and_center_coefficients(&mut r2i_times_cyclo_mod_Zqi, &qi_bigint);
+                assert_eq!(&ct0i_minus_ct0i_hat_mod_Zqi, &r2i_times_cyclo_mod_Zqi);
+                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+
+                // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                let r1i_num = poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo);
+                assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
+
+                let (r1i, r1i_rem) = poly_div(&r1i_num, &[qi_bigint.clone()]);
+                assert!(r1i_rem.is_empty());
+                assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
+                assert_eq!(&r1i_num, &poly_mul(&r1i, &[qi_bigint.clone()]));
+
+                // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
+                let r1i_times_qi = poly_scalar_mul(&r1i, &qi_bigint);
+                let mut ct0i_calculated =
+                    poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
+
+                while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
+                    ct0i_calculated.remove(0);
+                }
+
+                assert_eq!(&ct0i, &ct0i_calculated);
+
+                // --------------------------------------------------- ct1i ---------------------------------------------------
+
+                // Calculate ct1i_hat = pk1i * ui + e1i
+                let ct1i_hat = {
+                    let pk1i_times_u = poly_mul(&pk1i, &u);
+                    assert_eq!((pk1i_times_u.len() as u64) - 1, 2 * (N - 1));
+
+                    poly_add(&pk1i_times_u, &e1)
+                };
+                assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+
+                // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
+                let mut ct1i_hat_mod_Rqi = ct1i_hat.clone();
+                reduce_in_ring(&mut ct1i_hat_mod_Rqi, &cyclo, &qi_bigint);
+                assert_eq!(&ct1i, &ct1i_hat_mod_Rqi);
+
+                // Compute p2i numerator = ct1i - ct1i_hat
+                let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
+                assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+                let mut ct1i_minus_ct1i_hat_mod_Zqi = ct1i_minus_ct1i_hat.clone();
+                reduce_and_center_coefficients(&mut ct1i_minus_ct1i_hat_mod_Zqi, &qi_bigint);
+
+                // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
+                // and reduce/center the resulting coefficients to produce:
+                // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_Zqi, &cyclo.clone());
+                assert!(p2i_rem.is_empty());
+                assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
+
+                // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
+                let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
+                let mut p2i_times_cyclo_mod_Zqi = p2i_times_cyclo.clone();
+                reduce_and_center_coefficients(&mut p2i_times_cyclo_mod_Zqi, &qi_bigint);
+                assert_eq!(&ct1i_minus_ct1i_hat_mod_Zqi, &p2i_times_cyclo_mod_Zqi);
+                assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+
+                // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                let p1i_num = poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo);
+                assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
+
+                let (p1i, p1i_rem) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
+                assert!(p1i_rem.is_empty());
+                assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
+                assert_eq!(&p1i_num, &poly_mul(&p1i, &[qi_bigint.clone()]));
+
+                // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
+                let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
+                let mut ct1i_calculated =
+                    poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
+
+                while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
+                    ct1i_calculated.remove(0);
+                }
+
+                assert_eq!(&ct1i, &ct1i_calculated);
+
+                (
+                    i, r2i, r1i, k0qi, ct0i, ct0i_hat, ct1i, ct1i_hat, pk0i, pk1i, p1i, p2i,
+                )
+            },
+        )
+        .collect();
+
+    // Aggregate results into global vectors
+    for (i, r2i, r1i, k0i, ct0i, ct0i_hat, ct1i, ct1i_hat, pk0i, pk1i, p1i, p2i) in
+        results.into_iter()
     {
-        // --------------------------------------------------- ct0i ---------------------------------------------------
-
-        // Convert to vectors of bigint, center, and reverse order.
-        let mut ct0i: Vec<BigInt> = ct0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
-        let mut ct1i: Vec<BigInt> = ct1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
-        let mut pk0i: Vec<BigInt> = pk0_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
-        let mut pk1i: Vec<BigInt> = pk1_coeffs.iter().map(|&x| BigInt::from(x)).rev().collect();
-        let qi_bigint = BigInt::from(qi.modulus());
-        reduce_and_center_coefficients(&mut ct0i, &qi_bigint);
-        reduce_and_center_coefficients(&mut ct1i, &qi_bigint);
-        reduce_and_center_coefficients(&mut pk0i, &qi_bigint);
-        reduce_and_center_coefficients(&mut pk1i, &qi_bigint);
-
-        // k0qi = -t^{-1} mod qi
-        let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
-        let k0qi = BigInt::from(koqi_u64);
-
-        // ki = k1 * k0qi, center
-        let mut ki = poly_scalar_mul(&k1, &k0qi);
-        reduce_and_center_coefficients(&mut ki, &qi_bigint);
-
-        // Calculate ct0i_hat = pk0 * ui + e0i + ki
-        let ct0i_hat = {
-            let pk0i_times_u = poly_mul(&pk0i, &u);
-            assert_eq!((pk0i_times_u.len() as u64) - 1, 2 * (N - 1));
-
-            let e0_plus_ki = poly_add(&e0, &ki);
-            assert_eq!((e0_plus_ki.len() as u64) - 1, N - 1);
-
-            poly_add(&pk0i_times_u, &e0_plus_ki)
-        };
-        assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
-
-        // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
-        let mut ct0i_hat_mod_Rqi = ct0i_hat.clone();
-        reduce_in_ring(&mut ct0i_hat_mod_Rqi, &cyclo, &qi_bigint);
-        assert_eq!(&ct0i, &ct0i_hat_mod_Rqi);
-
-        // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
-        let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
-        assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
-        let mut ct0i_minus_ct0i_hat_mod_Zqi = ct0i_minus_ct0i_hat.clone();
-        reduce_and_center_coefficients(&mut ct0i_minus_ct0i_hat_mod_Zqi, &qi_bigint);
-
-        // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
-        // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-        let (r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat_mod_Zqi, &cyclo);
-        assert!(r2i_rem.is_empty());
-        assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
-
-        // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
-        let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
-        let mut r2i_times_cyclo_mod_Zqi = r2i_times_cyclo.clone();
-        reduce_and_center_coefficients(&mut r2i_times_cyclo_mod_Zqi, &qi_bigint);
-        assert_eq!(&ct0i_minus_ct0i_hat_mod_Zqi, &r2i_times_cyclo_mod_Zqi);
-        assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
-
-        // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
-        let r1i_num = poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo);
-        assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
-
-        let (r1i, r1i_rem) = poly_div(&r1i_num, &[qi_bigint.clone()]);
-        assert!(r1i_rem.is_empty());
-        assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
-        assert_eq!(&r1i_num, &poly_mul(&r1i, &[qi_bigint.clone()]));
-
-        // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
-        let r1i_times_qi = poly_scalar_mul(&r1i, &qi_bigint);
-        let mut ct0i_calculated = poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
-
-        while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
-            ct0i_calculated.remove(0);
-        }
-
-        assert_eq!(&ct0i, &ct0i_calculated);
-
-        // --------------------------------------------------- ct1i ---------------------------------------------------
-
-        // Calculate ct1i_hat = pk1i * ui + e1i
-        let ct1i_hat = {
-            let pk1i_times_u = poly_mul(&pk1i, &u);
-            assert_eq!((pk1i_times_u.len() as u64) - 1, 2 * (N - 1));
-
-            poly_add(&pk1i_times_u, &e1)
-        };
-        assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
-
-        // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
-        let mut ct1i_hat_mod_Rqi = ct1i_hat.clone();
-        reduce_in_ring(&mut ct1i_hat_mod_Rqi, &cyclo, &qi_bigint);
-        assert_eq!(&ct1i, &ct1i_hat_mod_Rqi);
-
-        // Compute p2i numerator = ct1i - ct1i_hat
-        let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
-        assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
-        let mut ct1i_minus_ct1i_hat_mod_Zqi = ct1i_minus_ct1i_hat.clone();
-        reduce_and_center_coefficients(&mut ct1i_minus_ct1i_hat_mod_Zqi, &qi_bigint);
-
-        // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
-        // and reduce/center the resulting coefficients to produce:
-        // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-        let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_Zqi, &cyclo.clone());
-        assert!(p2i_rem.is_empty());
-        assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
-
-        // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
-        let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
-        let mut p2i_times_cyclo_mod_Zqi = p2i_times_cyclo.clone();
-        reduce_and_center_coefficients(&mut p2i_times_cyclo_mod_Zqi, &qi_bigint);
-        assert_eq!(&ct1i_minus_ct1i_hat_mod_Zqi, &p2i_times_cyclo_mod_Zqi);
-        assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
-
-        // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
-        let p1i_num = poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo);
-        assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
-
-        let (p1i, p1i_rem) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
-        assert!(p1i_rem.is_empty());
-        assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
-        assert_eq!(&p1i_num, &poly_mul(&p1i, &[qi_bigint.clone()]));
-
-        // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
-        let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
-        let mut ct1i_calculated = poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
-
-        while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
-            ct1i_calculated.remove(0);
-        }
-
-        assert_eq!(&ct1i, &ct1i_calculated);
-
-        r2is.push(r2i);
-        r1is.push(r1i);
-        p2is.push(p2i);
-        p1is.push(p1i);
+        r2is[i] = r2i;
+        r1is[i] = r1i;
+        k0is[i] = k0i;
+        ct0is[i] = ct0i;
+        ct0is_hat[i] = ct0i_hat;
+        ct1is[i] = ct1i;
+        ct1is_hat[i] = ct1i_hat;
+        pk0is[i] = pk0i;
+        pk1is[i] = pk1i;
+        p1is[i] = p1i;
+        p2is[i] = p2i;
     }
 
     for r2i in r2is.iter_mut() {
@@ -502,37 +580,55 @@ fn reduce_coefficients_by_cyclo(coefficients: &mut Vec<BigInt>, cyclo: &[BigInt]
     coefficients.extend(out);
 }
 
-/// Reduces and centers polynomial coefficients modulo a prime modulus.
+/// Reduces a number modulo a prime modulus and centers it.
 ///
-/// This function takes a mutable slice of polynomial coefficients and reduces each coefficient
-/// modulo a prime modulus, adjusting them to be within the range [−(modulus−1)/2, (modulus−1)/2].
+/// This function takes an arbitrary number and reduces it modulo the specified prime modulus.
+/// After reduction, the number is adjusted to be within the symmetric range
+/// [−(modulus−1)/2, (modulus−1)/2]. If the number is already within this range, it remains unchanged.
 ///
 /// # Parameters
 ///
-/// - `coefficients`: Mutable slice of `BigInt` coefficients to be centered.
-/// - `modulus`: Prime modulus used for reduction and centering.
+/// - `x`: A reference to a `BigInt` representing the number to be reduced and centered.
+/// - `modulus`: A reference to the prime modulus `BigInt` used for reduction.
+/// - `half_modulus`: A reference to a `BigInt` representing half of the modulus used to center the coefficient.
+///
+/// # Returns
+///
+/// - A `BigInt` representing the reduced and centered number.
+fn reduce_and_center(x: &BigInt, modulus: &BigInt, half_modulus: &BigInt) -> BigInt {
+    // Calculate the remainder ensuring it's non-negative
+    let mut r = x % modulus;
+    if r < BigInt::zero() {
+        r += modulus;
+    }
+
+    // Adjust the remainder if it is greater than half_modulus
+    if r > *half_modulus {
+        r -= modulus;
+    }
+
+    r
+}
+
+/// Reduces and centers polynomial coefficients modulo a prime modulus.
+///
+/// This function iterates over a mutable slice of polynomial coefficients, reducing each coefficient
+/// modulo a given prime modulus and adjusting the result to be within the symmetric range
+/// [−(modulus−1)/2, (modulus−1)/2].
+///
+/// # Parameters
+///
+/// - `coefficients`: A mutable slice of `BigInt` coefficients to be reduced and centered.
+/// - `modulus`: A prime modulus `BigInt` used for reduction and centering.
 ///
 /// # Panics
 ///
 /// - Panics if `modulus` is zero due to division by zero.
 fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt) {
     let half_modulus = modulus / BigInt::from(2);
-
-    for c in coefficients.iter_mut() {
-        // Calculate the remainder ensuring it's non-negative
-        let mut r = &*c % modulus;
-        if r < BigInt::zero() {
-            r += modulus;
-        }
-
-        // Adjust the remainder if it is greater than half_modulus
-        if r > half_modulus {
-            r -= modulus;
-        }
-
-        // Assign the centered coefficient back
-        *c = r;
-    }
+    coefficients
+        .iter_mut()
+        .for_each(|x| *x = reduce_and_center(x, modulus, &half_modulus));
 }
 
 /// Reduces a polynomial's coefficients within a polynomial ring defined by a cyclotomic polynomial and a modulus.
