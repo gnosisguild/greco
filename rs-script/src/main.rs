@@ -9,8 +9,11 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::prelude::*;
 use serde_json::json;
+use std::fs::File;
+use std::io::Write;
 use std::ops::Deref;
-use std::{fs, vec};
+use std::path::Path;
+use std::vec;
 
 fn main() {
     // Set up the BFV parameters
@@ -53,7 +56,7 @@ fn main() {
     let mut k1_u64 = pt.value.deref().to_vec(); // m
     t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
     let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).rev().collect();
-    reduce_and_center_coefficients(&mut k1, &BigInt::from(t.modulus()));
+    reduce_and_center_coefficients_mut(&mut k1, &BigInt::from(t.modulus()));
 
     // Extract single vectors of u, e1, and e2 as Vec<BigInt>, center and reverse
     u_rns.change_representation(Representation::PowerBasis);
@@ -110,11 +113,13 @@ fn main() {
     .unwrap();
 
     // Print
+    /*
     println!("m = {:?}\n", &m);
     println!("k1 = {:?}\n", &k1);
     println!("u = {:?}\n", &u);
     println!("e0 = {:?}\n", &e0);
     println!("e1 = {:?}\n", &e1);
+     */
 
     // Initialize matrices to store results
     let num_moduli = params.moduli().len();
@@ -178,10 +183,10 @@ fn main() {
 
                 let qi_bigint = BigInt::from(qi.modulus());
 
-                reduce_and_center_coefficients(&mut ct0i, &qi_bigint);
-                reduce_and_center_coefficients(&mut ct1i, &qi_bigint);
-                reduce_and_center_coefficients(&mut pk0i, &qi_bigint);
-                reduce_and_center_coefficients(&mut pk1i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ct0i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
 
                 // k0qi = -t^{-1} mod qi
                 let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
@@ -205,20 +210,13 @@ fn main() {
                 // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
                 let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
                 reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint);
-
-                for (i, (a, b)) in izip!(&ct0i, &ct0i_hat_mod_rqi).enumerate() {
-                    if a != b {
-                        println!("{}  {} != {} -> {} - {} = {}", i, a, b, a, b, a - b);
-                    }
-                }
-
                 assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
 
                 // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
                 let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
                 assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
                 let mut ct0i_minus_ct0i_hat_mod_zqi = ct0i_minus_ct0i_hat.clone();
-                reduce_and_center_coefficients(&mut ct0i_minus_ct0i_hat_mod_zqi, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ct0i_minus_ct0i_hat_mod_zqi, &qi_bigint);
 
                 // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
                 // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
@@ -229,7 +227,7 @@ fn main() {
                 // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
                 let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
                 let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
-                reduce_and_center_coefficients(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
                 assert_eq!(&ct0i_minus_ct0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
                 assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
 
@@ -273,7 +271,7 @@ fn main() {
                 let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
                 assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
                 let mut ct1i_minus_ct1i_hat_mod_zqi = ct1i_minus_ct1i_hat.clone();
-                reduce_and_center_coefficients(&mut ct1i_minus_ct1i_hat_mod_zqi, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut ct1i_minus_ct1i_hat_mod_zqi, &qi_bigint);
 
                 // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
                 // and reduce/center the resulting coefficients to produce:
@@ -285,7 +283,7 @@ fn main() {
                 // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
                 let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
                 let mut p2i_times_cyclo_mod_zqi = p2i_times_cyclo.clone();
-                reduce_and_center_coefficients(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
+                reduce_and_center_coefficients_mut(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
                 assert_eq!(&ct1i_minus_ct1i_hat_mod_zqi, &p2i_times_cyclo_mod_zqi);
                 assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
 
@@ -309,6 +307,7 @@ fn main() {
 
                 assert_eq!(&ct1i, &ct1i_calculated);
 
+                /*
                 println!("qi = {:?}\n", &qi_bigint);
                 println!("ct0i = {:?}\n", &ct0i);
                 println!("k0qi = {:?}\n", &k0qi);
@@ -316,6 +315,7 @@ fn main() {
                 println!("pk1 = Polynomial({:?})\n", &pk1i);
                 println!("ki = {:?}\n", &ki);
                 println!("ct0i_hat_mod_rqi = {:?}\n", &ct0i_hat_mod_rqi);
+                */
 
                 (
                     i, r2i, r1i, k0qi, ct0i, ct0i_hat, ct1i, ct1i_hat, pk0i, pk1i, p1i, p2i,
@@ -341,40 +341,308 @@ fn main() {
         pk1is[i] = pk1i;
         p1is[i] = p1i;
         p2is[i] = p2i;
-
-        // Move to Z_p
-        reduce_coefficients_mut(&mut r2is[i], &p);
-        reduce_coefficients_mut(&mut r1is[i], &p);
-        reduce_coefficients_mut(&mut p2is[i], &p);
-        reduce_coefficients_mut(&mut p1is[i], &p);
-        reduce_coefficients_mut(&mut ct0is[i], &p);
-        reduce_coefficients_mut(&mut ct1is[i], &p);
-        reduce_coefficients_mut(&mut pk0is[i], &p);
-        reduce_coefficients_mut(&mut pk1is[i], &p);
     }
 
-    // Create output json
+    // Create standard form versions with respect to p
+    let pk0is_assigned = reduce_coefficients_2d(&pk0is, &p);
+    let pk1is_assigned = reduce_coefficients_2d(&pk1is, &p);
+    let u_assigned = reduce_coefficients(&u, &p);
+    let e0_assigned = reduce_coefficients(&e0, &p);
+    let e1_assigned = reduce_coefficients(&e1, &p);
+    let k1_assigned = reduce_coefficients(&k1, &p);
+    let r2is_assigned = reduce_coefficients_2d(&r2is, &p);
+    let r1is_assigned = reduce_coefficients_2d(&r1is, &p);
+    let p2is_assigned = reduce_coefficients_2d(&p2is, &p);
+    let p1is_assigned = reduce_coefficients_2d(&p1is, &p);
+    let ct0is_assigned = reduce_coefficients_2d(&ct0is, &p);
+    let ct1is_assigned = reduce_coefficients_2d(&ct1is, &p);
+
+    // Create output json with standard form polynomials
     let json_data = json!({
-        "pk0i": to_string_2d_vec(&pk0is),
-        "pk1i": to_string_2d_vec(&pk1is),
-        "u": to_string_1d_vec(&reduce_coefficients(&u, &p)),
-        "e0": to_string_1d_vec(&reduce_coefficients(&e0, &p)),
-        "e1": to_string_1d_vec(&reduce_coefficients(&e1, &p)),
-        "k1": to_string_1d_vec(&reduce_coefficients(&k1, &p)),
-        "r2is": to_string_2d_vec(&r2is),
-        "r1is": to_string_2d_vec(&r1is),
-        "p2is": to_string_2d_vec(&p2is),
-        "p1is": to_string_2d_vec(&p1is),
-        "ct0is": to_string_2d_vec(&ct0is),
-        "ct1is": to_string_2d_vec(&ct1is)
+        "pk0i": to_string_2d_vec(&pk0is_assigned),
+        "pk1i": to_string_2d_vec(&pk1is_assigned),
+        "u": to_string_1d_vec(&u_assigned),
+        "e0": to_string_1d_vec(&e0_assigned),
+        "e1": to_string_1d_vec(&e1_assigned),
+        "k1": to_string_1d_vec(&k1_assigned),
+        "r2is": to_string_2d_vec(&r2is_assigned),
+        "r1is": to_string_2d_vec(&r1is_assigned),
+        "p2is": to_string_2d_vec(&p2is_assigned),
+        "p1is": to_string_2d_vec(&p1is_assigned),
+        "ct0is": to_string_2d_vec(&ct0is_assigned),
+        "ct1is": to_string_2d_vec(&ct1is_assigned)
     });
 
-    fs::write("output.json", json_data.to_string()).unwrap();
-    fs::write(
-        "output_zeroes.json",
-        create_zeroes_json(params.degree(), num_moduli).to_string(),
+    let moduli_bigint: Vec<BigInt> = moduli.iter().map(|&qi| BigInt::from(qi)).collect();
+    let moduli_bitsize = {
+        if let Some(&max_value) = moduli.iter().max() {
+            64 - max_value.leading_zeros()
+        } else {
+            0
+        }
+    };
+
+    // Calculate bounds ---------------------------------------------------------------------
+
+    let key_bound = BigInt::from(
+        f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
+            .to_i64()
+            .unwrap(),
+    ); // round(6*sigma)
+    let ptxt_bound = BigInt::from((t.modulus() - 1) / 2);
+    let mut pk_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut r2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut r1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut p2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut p1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    for i in 0..moduli.len() {
+        // constraint. The coefficients of ct0i and ct1i should be in the range [-(qi-1)/2, (qi-1)/2]
+        let bound = (moduli_bigint[i].clone() - BigInt::from(1)) / BigInt::from(2);
+        assert!(range_check_centered(&ct0is[i], &-&bound, &bound));
+        assert!(range_check_centered(&ct1is[i], &-&bound, &bound));
+
+        // constraint. The coefficients of pk0i and pk1i should be in range [-(qi-1)/2 , (qi-1)/2]
+        pk_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &pk0is[i],
+            &-&pk_bounds[i],
+            &pk_bounds[i]
+        ));
+        assert!(range_check_centered(
+            &pk1is[i],
+            &-&pk_bounds[i],
+            &pk_bounds[i]
+        ));
+        assert!(range_check_standard(&pk0is_assigned[i], &pk_bounds[i], &p));
+        assert!(range_check_standard(&pk1is_assigned[i], &pk_bounds[i], &p));
+
+        // constraint. The coefficients of r2i should be in the range [-(qi-1)/2, (qi-1)/2]
+        r2_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &r2is[i],
+            &-&r2_bounds[i],
+            &r2_bounds[i]
+        ));
+        assert!(range_check_standard(&r2is_assigned[i], &r2_bounds[i], &p));
+
+        // constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range
+        // $[
+        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i},
+        //      \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}
+        // ]$
+        let r1i_bound = (BigInt::from(&N + 2) * &bound + &key_bound + &ptxt_bound * &k0is[i])
+            / &moduli_bigint[i];
+        r1_bounds[i] = r1i_bound.clone();
+        assert!(range_check_centered(
+            &r1is[i],
+            &-&r1_bounds[i],
+            &r1_bounds[i]
+        ));
+        assert!(range_check_standard(&r1is_assigned[i], &r1i_bound, &p));
+
+        // constraint. The coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
+        p2_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &p2is[i],
+            &-&p2_bounds[i],
+            &p2_bounds[i]
+        ));
+        assert!(range_check_standard(&p2is_assigned[i], &p2_bounds[i], &p));
+    }
+
+    // Write out files ----------------------------------------------------------------------
+
+    let output_path = Path::new("src").join("data").join("pk_enc_data");
+
+    // Generate filename and write file
+    let filename = format!(
+        "pk_enc_{}_{}x{}_{}.json",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+    write_json_to_file(&output_path, &filename, &json_data);
+
+    // Generate zeros filename and write file
+    let filename_zeroes = format!(
+        "pk_enc_{}_{}x{}_{}_zeroes.json",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+    let zeroes_json = create_zeroes_json(params.degree(), moduli.len());
+    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
+
+    let filename_constants = format!(
+        "pk_enc_constants_{}_{}x{}_{}.rs",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+
+    // write_constants_to_file(
+    //     N,
+    //     pk_bound,
+    //     b,
+    //     r1_bounds,
+    //     r2_bounds,
+    //     p1_bounds,
+    //     p2_bounds,
+    //     k1_bound,
+    //     qi_constants,
+    //     k0i_constants,
+    //     &filename_constants,
+    // )
+}
+
+fn write_constants_to_file(
+    n: usize,
+    pk_bound: &[BigInt],
+    b: BigInt,
+    r1_bounds: &[BigInt],
+    r2_bounds: &[BigInt],
+    p1_bounds: &[BigInt],
+    p2_bounds: &[BigInt],
+    k1_bound: BigInt,
+    qi_constants: &[BigInt],
+    k0i_constants: &[BigInt],
+    output_file: &str,
+) {
+    // Set the output file path
+    let output_path = Path::new("src")
+        .join("constants")
+        .join("pk_enc_constants")
+        .join(output_file);
+
+    let mut file = File::create(output_path).expect("Unable to create file");
+
+    // Writing the constants to the file
+    writeln!(file, "/// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.")
+        .expect("Unable to write to file");
+    writeln!(file, "pub const N: usize = {};", n).expect("Unable to write to file");
+
+    let pk_bound_str = pk_bound
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// The coefficients of the polynomial `pk0is` and `pk1is` should exist in the interval `[-PK_BOUND, PK_BOUND]`.")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const PK_BOUND: [u64; {}] = [{}];",
+        pk_bound.len(),
+        pk_bound_str
     )
-    .unwrap();
+    .expect("Unable to write to file");
+
+    writeln!(file, "/// The coefficients of the polynomial `pk1is` should exist in the interval `[-PK0_BOUND, PK0_BOUND]`.")
+        .expect("Unable to write to file");
+
+    writeln!(file, "/// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with 𝜎 = 3.2.")
+        .expect("Unable to write to file");
+    writeln!(file, "pub const E_BOUND: u64 = {};", b).expect("Unable to write to file");
+
+    writeln!(file, "/// The coefficients of the polynomial `s` should exist in the interval `[-S_BOUND, S_BOUND]`.")
+        .expect("Unable to write to file");
+    writeln!(file, "pub const U_BOUND: u64 = {};", 1).expect("Unable to write to file");
+
+    let r1_bounds_str = r1_bounds
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// The coefficients of the polynomials `r1is` should exist in the interval `[-R1_BOUND[i], R1_BOUND[i]]` where `R1_BOUND[i]` is equal to `(qi-1)/2`.")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const R1_BOUNDS: [u64; {}] = [{}];",
+        r1_bounds.len(),
+        r1_bounds_str
+    )
+    .expect("Unable to write to file");
+
+    let r2_bounds_str = r2_bounds
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// The coefficients of the polynomials `r2is` should exist in the interval `[-R2_BOUND[i], R2_BOUND[i]]` where `R2_BOUND[i]` is equal to $\\frac{{(N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B + \\frac{{t - 1}}{{2}} \\cdot |K_{{0,i}}|}}{{q_i}}`.")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const R2_BOUNDS: [u64; {}] = [{}];",
+        r2_bounds.len(),
+        r2_bounds_str
+    )
+    .expect("Unable to write to file");
+
+    let p1_bounds_str = p1_bounds
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// The coefficients of the polynomials `p1is` should exist in the interval `[-P1_BOUND[i], P1_BOUND[i]]` where `P1_BOUND[i]` is equal to (((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i].")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const P1_BOUNDS: [u64; {}] = [{}];",
+        p1_bounds.len(),
+        p1_bounds_str
+    )
+    .expect("Unable to write to file");
+
+    let p2_bounds_str = p2_bounds
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// The coefficients of the polynomials `p2is` should exist in the interval `[-P2_BOUND[i], P2_BOUND[i]]` where `P2_BOUND[i]` is equal to (qis[i] - 1) / 2.")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const P2_BOUNDS: [u64; {}] = [{}];",
+        p2_bounds.len(),
+        p2_bounds_str
+    )
+    .expect("Unable to write to file");
+
+    writeln!(file, "/// The coefficients of `k1` should exist in the interval `[-K1_BOUND, K1_BOUND]` where `K1_BOUND` is equal to `(t-1)/2`.")
+        .expect("Unable to write to file");
+    writeln!(file, "pub const K1_BOUND: u64 = {};", k1_bound).expect("Unable to write to file");
+
+    let qis_str = qi_constants
+        .iter()
+        .map(|x| format!("\"{}\"", x))
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// List of scalars `qis` such that `qis[i]` is the modulus of the i-th CRT basis of `q` (ciphertext space modulus).")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const QIS: [&str; {}] = [{}];",
+        qi_constants.len(),
+        qis_str
+    )
+    .expect("Unable to write to file");
+
+    let k0is_str = k0i_constants
+        .iter()
+        .map(|x| format!("\"{}\"", x))
+        .collect::<Vec<String>>()
+        .join(", ");
+    writeln!(file, "/// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.")
+        .expect("Unable to write to file");
+    writeln!(
+        file,
+        "pub const K0IS: [&str; {}] = [{}];",
+        k0i_constants.len(),
+        k0is_str
+    )
+    .expect("Unable to write to file");
 }
 
 /// Adds two polynomials represented as vectors of `BigInt` coefficients in descending order of powers.
@@ -626,11 +894,18 @@ fn reduce_and_center(x: &BigInt, modulus: &BigInt, half_modulus: &BigInt) -> Big
 /// # Panics
 ///
 /// - Panics if `modulus` is zero due to division by zero.
-fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt) {
+fn reduce_and_center_coefficients_mut(coefficients: &mut [BigInt], modulus: &BigInt) {
     let half_modulus = modulus / BigInt::from(2);
     coefficients
         .iter_mut()
         .for_each(|x| *x = reduce_and_center(x, modulus, &half_modulus));
+}
+fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt) -> Vec<BigInt> {
+    let half_modulus = modulus / BigInt::from(2);
+    coefficients
+        .iter()
+        .map(|x| reduce_and_center(x, modulus, &half_modulus))
+        .collect()
 }
 
 /// Reduces a polynomial's coefficients within a polynomial ring defined by a cyclotomic polynomial and a modulus.
@@ -650,7 +925,7 @@ fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt)
 ///   will be reduced and centered modulo this value.
 fn reduce_in_ring(coefficients: &mut Vec<BigInt>, cyclo: &[BigInt], modulus: &BigInt) {
     reduce_coefficients_by_cyclo(coefficients, cyclo);
-    reduce_and_center_coefficients(coefficients, modulus);
+    reduce_and_center_coefficients_mut(coefficients, modulus);
 }
 
 /// Reduces each element in the given slice of `BigInt` by the modulus `p`.
@@ -671,6 +946,13 @@ fn reduce_coefficients(coefficients: &[BigInt], p: &BigInt) -> Vec<BigInt> {
     coefficients.iter().map(|coeff| (coeff + p) % p).collect()
 }
 
+fn reduce_coefficients_2d(coefficient_matrix: &[Vec<BigInt>], p: &BigInt) -> Vec<Vec<BigInt>> {
+    coefficient_matrix
+        .iter()
+        .map(|coeffs| reduce_coefficients(coeffs, p))
+        .collect()
+}
+
 /// Mutably reduces each element in the given slice of `BigInt` by the modulus `p`.
 ///
 /// This function modifies the given mutable slice of `BigInt` coefficients in place. It adds `p`
@@ -687,6 +969,18 @@ fn reduce_coefficients_mut(coefficients: &mut [BigInt], p: &BigInt) {
     }
 }
 
+fn range_check_centered(vec: &[BigInt], lower_bound: &BigInt, upper_bound: &BigInt) -> bool {
+    vec.iter()
+        .all(|coeff| coeff >= lower_bound && coeff <= upper_bound)
+}
+
+fn range_check_standard(vec: &[BigInt], bound: &BigInt, modulus: &BigInt) -> bool {
+    vec.iter().all(|coeff| {
+        (coeff >= &BigInt::from(0) && coeff <= bound)
+            || (coeff >= &(modulus - bound) && coeff < modulus)
+    })
+}
+
 fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
     poly.iter().map(|coef| coef.to_string()).collect()
 }
@@ -695,10 +989,29 @@ fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
     poly.iter().map(|row| to_string_1d_vec(row)).collect()
 }
 
+/// Writes the given JSON data to a file in the specified output path.
+///
+/// # Arguments
+///
+/// * `output_path` - A reference to the base directory path where the file will be created.
+/// * `filename` - The name of the file to create.
+/// * `json_data` - A reference to the JSON data to be written into the file.
+///
+/// # Panics
+///
+/// This function will panic if the file cannot be created or if writing to the file fails.
+
+fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json::Value) {
+    let file_path = output_path.join(filename);
+    let mut file = File::create(file_path).expect("Unable to create file");
+    file.write_all(serde_json::to_string_pretty(json_data).unwrap().as_bytes())
+        .expect("Unable to write data");
+}
+
 fn create_zeroes_json(degree: usize, moduli_len: usize) -> serde_json::Value {
     json!({
-        "pk0_qi": vec![vec![String::from("0"); degree]; moduli_len],
-        "pk1_qi": vec![vec![String::from("0"); degree]; moduli_len],
+        "pk0i": vec![vec![String::from("0"); degree]; moduli_len],
+        "pk1i": vec![vec![String::from("0"); degree]; moduli_len],
         "u": vec![String::from("0"); degree],
         "e0": vec![String::from("0"); degree],
         "e1": vec![String::from("0"); degree],
