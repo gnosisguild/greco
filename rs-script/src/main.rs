@@ -4,7 +4,7 @@ use fhe_math::zq::Modulus;
 use fhe_traits::*;
 use itertools::izip;
 use num_bigint::BigInt;
-use num_traits::{Num, ToPrimitive, Zero};
+use num_traits::{Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::prelude::*;
@@ -40,7 +40,7 @@ fn main() {
 
     // Sample a message and encrypt
     // let m = t.random_vec(N as usize, &mut rng);
-    let m: Vec<i64> = (-64..64).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
+    let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
     let pt = Plaintext::try_encode(&m, Encoding::poly(), &params).unwrap();
     let (ct, mut u_rns, mut e0_rns, mut e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
@@ -324,7 +324,7 @@ fn main() {
         )
         .collect();
 
-    println!("Completed creation of polynomials!");
+    // println!("Completed creation of polynomials!");
 
     // Aggregate results into global vectors
     for (i, r2i, r1i, k0i, ct0i, ct0i_hat, ct1i, ct1i_hat, pk0i, pk1i, p1i, p2i) in
@@ -384,12 +384,35 @@ fn main() {
 
     // Calculate bounds ---------------------------------------------------------------------
 
-    let key_bound = BigInt::from(
+    // constraint. The coefficients of u, e0, e1 should be in the range [-⌈6σ⌋, ⌈6σ⌋]
+    // where ⌈6σ⌋ is the upper bound of the discrete Gaussian distribution
+    //
+    // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
+    // rather than a ternary distribution as in bfv.py.
+    let gauss_bound = BigInt::from(
         f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
             .to_i64()
             .unwrap(),
-    ); // round(6*sigma)
+    );
+    let u_bound = gauss_bound.clone();
+    let e_bound = gauss_bound.clone();
+    // Check centered bounds for u, e0, e1
+    assert!(range_check_centered(&u, &-&u_bound, &u_bound));
+    assert!(range_check_centered(&e0, &-&e_bound, &e_bound));
+    assert!(range_check_centered(&e1, &-&e_bound, &e_bound));
+
+    // Check assigned bounds for u, e0, e1
+    assert!(range_check_standard(&u_assigned, &u_bound, &p));
+    assert!(range_check_standard(&e0_assigned, &e_bound, &p));
+    assert!(range_check_standard(&e1_assigned, &e_bound, &p));
+
+    // constraint. The coefficients of k1 should be in the range [-(t-1)/2, (t-1)/2]
     let ptxt_bound = BigInt::from((t.modulus() - 1) / 2);
+    let k1_bound = ptxt_bound.clone();
+    assert!(range_check_centered(&k1, &-&k1_bound, &k1_bound));
+    assert!(range_check_standard(&k1_assigned, &k1_bound, &p));
+
+    // Calculate bounds and perform asserts for polynomials depending on each qi
     let mut pk_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
     let mut r2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
     let mut r1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
@@ -427,11 +450,12 @@ fn main() {
 
         // constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range
         // $[
-        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B +\frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i},
-        //      \frac{(N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|}{q_i}
+        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i},
+        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}| }{q_i}
         // ]$
-        let r1i_bound = (BigInt::from(&N + 2) * &bound + &key_bound + &ptxt_bound * &k0is[i])
-            / &moduli_bigint[i];
+        let r1i_bound =
+            (BigInt::from(&N + 2) * &bound + &gauss_bound + &ptxt_bound * BigInt::abs(&k0is[i]))
+                / &moduli_bigint[i];
         r1_bounds[i] = r1i_bound.clone();
         assert!(range_check_centered(
             &r1is[i],
@@ -448,10 +472,23 @@ fn main() {
             &p2_bounds[i]
         ));
         assert!(range_check_standard(&p2is_assigned[i], &p2_bounds[i], &p));
+
+        // constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range
+        // $[
+        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B)}{q_i},
+        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
+        // ]$
+        let p1i_bound = (BigInt::from(&N + 2) * &bound + &gauss_bound) / &moduli_bigint[i];
+        p1_bounds[i] = p1i_bound.clone();
+        assert!(range_check_centered(
+            &p1is[i],
+            &-&p1_bounds[i],
+            &p1_bounds[i]
+        ));
+        assert!(range_check_standard(&p1is_assigned[i], &p1i_bound, &p));
     }
 
     // Write out files ----------------------------------------------------------------------
-
     let output_path = Path::new("src").join("data").join("pk_enc_data");
 
     // Generate filename and write file
@@ -483,30 +520,32 @@ fn main() {
         t.modulus()
     );
 
-    // write_constants_to_file(
-    //     N,
-    //     pk_bound,
-    //     b,
-    //     r1_bounds,
-    //     r2_bounds,
-    //     p1_bounds,
-    //     p2_bounds,
-    //     k1_bound,
-    //     qi_constants,
-    //     k0i_constants,
-    //     &filename_constants,
-    // )
+    write_constants_to_file(
+        &N,
+        &pk_bounds,
+        &e_bound,
+        &u_bound,
+        &r1_bounds,
+        &r2_bounds,
+        &p1_bounds,
+        &p2_bounds,
+        &k1_bound,
+        &moduli_bigint,
+        &k0is,
+        &filename_constants,
+    )
 }
 
 fn write_constants_to_file(
-    n: usize,
-    pk_bound: &[BigInt],
-    b: BigInt,
+    n: &u64,
+    pk_bounds: &[BigInt],
+    e_bound: &BigInt,
+    u_bound: &BigInt,
     r1_bounds: &[BigInt],
     r2_bounds: &[BigInt],
     p1_bounds: &[BigInt],
     p2_bounds: &[BigInt],
-    k1_bound: BigInt,
+    k1_bound: &BigInt,
     qi_constants: &[BigInt],
     k0i_constants: &[BigInt],
     output_file: &str,
@@ -524,7 +563,7 @@ fn write_constants_to_file(
         .expect("Unable to write to file");
     writeln!(file, "pub const N: usize = {};", n).expect("Unable to write to file");
 
-    let pk_bound_str = pk_bound
+    let pk_bound_str = pk_bounds
         .iter()
         .map(|x| x.to_string())
         .collect::<Vec<String>>()
@@ -534,7 +573,7 @@ fn write_constants_to_file(
     writeln!(
         file,
         "pub const PK_BOUND: [u64; {}] = [{}];",
-        pk_bound.len(),
+        pk_bounds.len(),
         pk_bound_str
     )
     .expect("Unable to write to file");
@@ -544,11 +583,11 @@ fn write_constants_to_file(
 
     writeln!(file, "/// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with 𝜎 = 3.2.")
         .expect("Unable to write to file");
-    writeln!(file, "pub const E_BOUND: u64 = {};", b).expect("Unable to write to file");
+    writeln!(file, "pub const E_BOUND: u64 = {};", e_bound).expect("Unable to write to file");
 
     writeln!(file, "/// The coefficients of the polynomial `s` should exist in the interval `[-S_BOUND, S_BOUND]`.")
         .expect("Unable to write to file");
-    writeln!(file, "pub const U_BOUND: u64 = {};", 1).expect("Unable to write to file");
+    writeln!(file, "pub const U_BOUND: u64 = {};", u_bound).expect("Unable to write to file");
 
     let r1_bounds_str = r1_bounds
         .iter()
