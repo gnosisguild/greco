@@ -1,19 +1,26 @@
-use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, PublicKey, SecretKey};
-use fhe_math::rq::{Poly, Representation};
-use fhe_math::zq::Modulus;
+mod poly;
+
+use fhe::bfv::{BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey};
+use fhe_math::{
+    rq::{Context, Poly, Representation},
+    zq::Modulus,
+};
 use fhe_traits::*;
 use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::{Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use rayon::prelude::*;
+use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use serde_json::json;
 use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 use std::vec;
+
+use poly::*;
 
 fn main() {
     // Set up the BFV parameters
@@ -42,7 +49,7 @@ fn main() {
     // let m = t.random_vec(N as usize, &mut rng);
     let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
     let pt = Plaintext::try_encode(&m, Encoding::poly(), &params).unwrap();
-    let (ct, mut u_rns, mut e0_rns, mut e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
+    let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
     // Sanity check. m = Decrypt(ct)
     let m_decrypted = unsafe { t.center_vec_vt(&sk.try_decrypt(&ct).unwrap().value.into_vec()) };
@@ -50,6 +57,253 @@ fn main() {
 
     // Extract context
     let ctx = params.ctx_at_level(pt.level()).unwrap().clone();
+
+    // Initialize zk proving modulus
+    let p = BigInt::from_str_radix(
+        "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        10,
+    )
+    .unwrap();
+
+    let (r2is, r1is, k0is, ct0is, ct1is, pk0is, pk1is, p1is, p2is, u, e0, e1, k1) =
+        compute_input_validation_vectors(&ctx, &t, &pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk);
+
+    // Create standard form versions with respect to p
+    let (
+        pk0is_std,
+        pk1is_std,
+        r2is_std,
+        r1is_std,
+        p2is_std,
+        p1is_std,
+        ct0is_std,
+        ct1is_std,
+        u_std,
+        e0_std,
+        e1_std,
+        k1_std,
+    ) = input_validation_vectors_standard_form(
+        &pk0is, &pk1is, &r2is, &r1is, &p2is, &p1is, &ct0is, &ct1is, &u, &e0, &e1, &k1, &p,
+    );
+
+    // Create output json with standard form polynomials
+    let json_data = json!({
+        "pk0i": to_string_2d_vec(&pk0is_std),
+        "pk1i": to_string_2d_vec(&pk1is_std),
+        "u": to_string_1d_vec(&u_std),
+        "e0": to_string_1d_vec(&e0_std),
+        "e1": to_string_1d_vec(&e1_std),
+        "k1": to_string_1d_vec(&k1_std),
+        "r2is": to_string_2d_vec(&r2is_std),
+        "r1is": to_string_2d_vec(&r1is_std),
+        "p2is": to_string_2d_vec(&p2is_std),
+        "p1is": to_string_2d_vec(&p1is_std),
+        "ct0is": to_string_2d_vec(&ct0is_std),
+        "ct1is": to_string_2d_vec(&ct1is_std)
+    });
+
+    let moduli_bigint: Vec<BigInt> = moduli.iter().map(|&qi| BigInt::from(qi)).collect();
+    let moduli_bitsize = {
+        if let Some(&max_value) = moduli.iter().max() {
+            64 - max_value.leading_zeros()
+        } else {
+            0
+        }
+    };
+
+    // Calculate bounds ---------------------------------------------------------------------
+
+    // constraint. The coefficients of u, e0, e1 should be in the range [-⌈6σ⌋, ⌈6σ⌋]
+    // where ⌈6σ⌋ is the upper bound of the discrete Gaussian distribution
+    //
+    // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
+    // rather than a ternary distribution as in bfv.py.
+    let gauss_bound = BigInt::from(
+        f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
+            .to_i64()
+            .unwrap(),
+    );
+    let u_bound = gauss_bound.clone();
+    let e_bound = gauss_bound.clone();
+    // Check centered bounds for u, e0, e1
+    assert!(range_check_centered(&u, &-&u_bound, &u_bound));
+    assert!(range_check_centered(&e0, &-&e_bound, &e_bound));
+    assert!(range_check_centered(&e1, &-&e_bound, &e_bound));
+
+    // Check assigned bounds for u, e0, e1
+    assert!(range_check_standard(&u_std, &u_bound, &p));
+    assert!(range_check_standard(&e0_std, &e_bound, &p));
+    assert!(range_check_standard(&e1_std, &e_bound, &p));
+
+    // constraint. The coefficients of k1 should be in the range [-(t-1)/2, (t-1)/2]
+    let ptxt_bound = BigInt::from((t.modulus() - 1) / 2);
+    let k1_bound = ptxt_bound.clone();
+    assert!(range_check_centered(&k1, &-&k1_bound, &k1_bound));
+    assert!(range_check_standard(&k1_std, &k1_bound, &p));
+
+    // Calculate bounds and perform asserts for polynomials depending on each qi
+    let mut pk_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut r2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut r1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut p2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    let mut p1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
+    for i in 0..moduli.len() {
+        // constraint. The coefficients of ct0i and ct1i should be in the range [-(qi-1)/2, (qi-1)/2]
+        let bound = (moduli_bigint[i].clone() - BigInt::from(1)) / BigInt::from(2);
+        assert!(range_check_centered(&ct0is[i], &-&bound, &bound));
+        assert!(range_check_centered(&ct1is[i], &-&bound, &bound));
+
+        // constraint. The coefficients of pk0i and pk1i should be in range [-(qi-1)/2 , (qi-1)/2]
+        pk_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &pk0is[i],
+            &-&pk_bounds[i],
+            &pk_bounds[i]
+        ));
+        assert!(range_check_centered(
+            &pk1is[i],
+            &-&pk_bounds[i],
+            &pk_bounds[i]
+        ));
+        assert!(range_check_standard(&pk0is_std[i], &pk_bounds[i], &p));
+        assert!(range_check_standard(&pk1is_std[i], &pk_bounds[i], &p));
+
+        // constraint. The coefficients of r2i should be in the range [-(qi-1)/2, (qi-1)/2]
+        r2_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &r2is[i],
+            &-&r2_bounds[i],
+            &r2_bounds[i]
+        ));
+        assert!(range_check_standard(&r2is_std[i], &r2_bounds[i], &p));
+
+        // constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range
+        // $[
+        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i},
+        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}| }{q_i}
+        // ]$
+        let r1i_bound =
+            (BigInt::from(&N + 2) * &bound + &gauss_bound + &ptxt_bound * BigInt::abs(&k0is[i]))
+                / &moduli_bigint[i];
+        r1_bounds[i] = r1i_bound.clone();
+        assert!(range_check_centered(
+            &r1is[i],
+            &-&r1_bounds[i],
+            &r1_bounds[i]
+        ));
+        assert!(range_check_standard(&r1is_std[i], &r1i_bound, &p));
+
+        // constraint. The coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
+        p2_bounds[i] = bound.clone();
+        assert!(range_check_centered(
+            &p2is[i],
+            &-&p2_bounds[i],
+            &p2_bounds[i]
+        ));
+        assert!(range_check_standard(&p2is_std[i], &p2_bounds[i], &p));
+
+        // constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range
+        // $[
+        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B)}{q_i},
+        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
+        // ]$
+        let p1i_bound = (BigInt::from(&N + 2) * &bound + &gauss_bound) / &moduli_bigint[i];
+        p1_bounds[i] = p1i_bound.clone();
+        assert!(range_check_centered(
+            &p1is[i],
+            &-&p1_bounds[i],
+            &p1_bounds[i]
+        ));
+        assert!(range_check_standard(&p1is_std[i], &p1i_bound, &p));
+    }
+
+    // Write out files ----------------------------------------------------------------------
+    let output_path = Path::new("src").join("data").join("pk_enc_data");
+
+    // Generate filename and write file
+    let filename = format!(
+        "pk_enc_{}_{}x{}_{}.json",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+    write_json_to_file(&output_path, &filename, &json_data);
+
+    // Generate zeros filename and write file
+    let filename_zeroes = format!(
+        "pk_enc_{}_{}x{}_{}_zeroes.json",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+    let zeroes_json = create_zeroes_json(params.degree(), moduli.len());
+    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
+
+    let filename_constants = format!(
+        "pk_enc_constants_{}_{}x{}_{}.rs",
+        N,
+        moduli.len(),
+        moduli_bitsize,
+        t.modulus()
+    );
+
+    write_constants_to_file(
+        &N,
+        &pk_bounds,
+        &e_bound,
+        &u_bound,
+        &r1_bounds,
+        &r2_bounds,
+        &p1_bounds,
+        &p2_bounds,
+        &k1_bound,
+        &moduli_bigint,
+        &k0is,
+        &filename_constants,
+    )
+}
+
+/// Create the centered validation vectors necessary for creating an input validation proof according to Greco.
+/// For more information, please see https://eprint.iacr.org/2024/594.
+///
+/// # Arguments
+///
+/// * `ctx` - Context object from fhe.rs holding information about elements in Rq.
+/// * `t` - Plaintext modulus object.
+/// * `pt` - Plaintext from fhe.rs.
+/// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
+/// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
+/// * `e1_rns` - Error polynomioal used in cihpertext sampled from error distribution.
+/// * `ct` - Ciphertext from fhe.rs.
+/// * `pk` - Public Key from fhe.re.
+///
+fn compute_input_validation_vectors(
+    ctx: &Arc<Context>,
+    t: &Modulus,
+    pt: &Plaintext,
+    u_rns: &Poly,
+    e0_rns: &Poly,
+    e1_rns: &Poly,
+    ct: &Ciphertext,
+    pk: &PublicKey,
+) -> (
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<BigInt>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+) {
+    let N: u64 = ctx.degree as u64;
 
     // Calculate k1 (independent of qi), center and reverse
     let q_mod_t = (ctx.modulus() % t.modulus()).to_u64().unwrap(); // [q]_t
@@ -59,12 +313,15 @@ fn main() {
     reduce_and_center_coefficients_mut(&mut k1, &BigInt::from(t.modulus()));
 
     // Extract single vectors of u, e1, and e2 as Vec<BigInt>, center and reverse
-    u_rns.change_representation(Representation::PowerBasis);
-    e0_rns.change_representation(Representation::PowerBasis);
-    e1_rns.change_representation(Representation::PowerBasis);
+    let mut u_rns_copy = u_rns.clone();
+    let mut e0_rns_copy = e0_rns.clone();
+    let mut e1_rns_copy = e1_rns.clone();
+    u_rns_copy.change_representation(Representation::PowerBasis);
+    e0_rns_copy.change_representation(Representation::PowerBasis);
+    e1_rns_copy.change_representation(Representation::PowerBasis);
     let u: Vec<BigInt> = unsafe {
         ctx.moduli_operators()[0]
-            .center_vec_vt(u_rns.coefficients().row(0).as_slice().unwrap())
+            .center_vec_vt(u_rns_copy.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
             .rev()
@@ -73,7 +330,7 @@ fn main() {
 
     let e0: Vec<BigInt> = unsafe {
         ctx.moduli_operators()[0]
-            .center_vec_vt(e0_rns.coefficients().row(0).as_slice().unwrap())
+            .center_vec_vt(e0_rns_copy.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
             .rev()
@@ -82,7 +339,7 @@ fn main() {
 
     let e1: Vec<BigInt> = unsafe {
         ctx.moduli_operators()[0]
-            .center_vec_vt(e1_rns.coefficients().row(0).as_slice().unwrap())
+            .center_vec_vt(e1_rns_copy.coefficients().row(0).as_slice().unwrap())
             .iter()
             .map(|&x| BigInt::from(x))
             .rev()
@@ -105,13 +362,6 @@ fn main() {
     cyclo[0] = BigInt::from(1u64); // x^N term
     cyclo[N as usize] = BigInt::from(1u64); // x^0 term
 
-    // Initialize zk proving modulus
-    let p = BigInt::from_str_radix(
-        "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        10,
-    )
-    .unwrap();
-
     // Print
     /*
     println!("m = {:?}\n", &m);
@@ -122,7 +372,7 @@ fn main() {
      */
 
     // Initialize matrices to store results
-    let num_moduli = params.moduli().len();
+    let num_moduli = ctx.moduli().len();
     let mut r2is: Vec<Vec<BigInt>> = vec![Vec::new(); num_moduli];
     let mut r1is: Vec<Vec<BigInt>> = vec![Vec::new(); num_moduli];
     let mut k0is: Vec<BigInt> = vec![BigInt::zero(); num_moduli];
@@ -343,196 +593,70 @@ fn main() {
         p2is[i] = p2i;
     }
 
-    // Create standard form versions with respect to p
-    let pk0is_assigned = reduce_coefficients_2d(&pk0is, &p);
-    let pk1is_assigned = reduce_coefficients_2d(&pk1is, &p);
-    let u_assigned = reduce_coefficients(&u, &p);
-    let e0_assigned = reduce_coefficients(&e0, &p);
-    let e1_assigned = reduce_coefficients(&e1, &p);
-    let k1_assigned = reduce_coefficients(&k1, &p);
-    let r2is_assigned = reduce_coefficients_2d(&r2is, &p);
-    let r1is_assigned = reduce_coefficients_2d(&r1is, &p);
-    let p2is_assigned = reduce_coefficients_2d(&p2is, &p);
-    let p1is_assigned = reduce_coefficients_2d(&p1is, &p);
-    let ct0is_assigned = reduce_coefficients_2d(&ct0is, &p);
-    let ct1is_assigned = reduce_coefficients_2d(&ct1is, &p);
+    (
+        r2is, r1is, k0is, ct0is, ct1is, pk0is, pk1is, p1is, p2is, u, e0, e1, k1,
+    )
+}
 
-    // Create output json with standard form polynomials
-    let json_data = json!({
-        "pk0i": to_string_2d_vec(&pk0is_assigned),
-        "pk1i": to_string_2d_vec(&pk1is_assigned),
-        "u": to_string_1d_vec(&u_assigned),
-        "e0": to_string_1d_vec(&e0_assigned),
-        "e1": to_string_1d_vec(&e1_assigned),
-        "k1": to_string_1d_vec(&k1_assigned),
-        "r2is": to_string_2d_vec(&r2is_assigned),
-        "r1is": to_string_2d_vec(&r1is_assigned),
-        "p2is": to_string_2d_vec(&p2is_assigned),
-        "p1is": to_string_2d_vec(&p1is_assigned),
-        "ct0is": to_string_2d_vec(&ct0is_assigned),
-        "ct1is": to_string_2d_vec(&ct1is_assigned)
-    });
-
-    let moduli_bigint: Vec<BigInt> = moduli.iter().map(|&qi| BigInt::from(qi)).collect();
-    let moduli_bitsize = {
-        if let Some(&max_value) = moduli.iter().max() {
-            64 - max_value.leading_zeros()
-        } else {
-            0
-        }
-    };
-
-    // Calculate bounds ---------------------------------------------------------------------
-
-    // constraint. The coefficients of u, e0, e1 should be in the range [-⌈6σ⌋, ⌈6σ⌋]
-    // where ⌈6σ⌋ is the upper bound of the discrete Gaussian distribution
-    //
-    // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
-    // rather than a ternary distribution as in bfv.py.
-    let gauss_bound = BigInt::from(
-        f64::ceil(6_f64 * f64::sqrt(params.variance() as f64))
-            .to_i64()
-            .unwrap(),
-    );
-    let u_bound = gauss_bound.clone();
-    let e_bound = gauss_bound.clone();
-    // Check centered bounds for u, e0, e1
-    assert!(range_check_centered(&u, &-&u_bound, &u_bound));
-    assert!(range_check_centered(&e0, &-&e_bound, &e_bound));
-    assert!(range_check_centered(&e1, &-&e_bound, &e_bound));
-
-    // Check assigned bounds for u, e0, e1
-    assert!(range_check_standard(&u_assigned, &u_bound, &p));
-    assert!(range_check_standard(&e0_assigned, &e_bound, &p));
-    assert!(range_check_standard(&e1_assigned, &e_bound, &p));
-
-    // constraint. The coefficients of k1 should be in the range [-(t-1)/2, (t-1)/2]
-    let ptxt_bound = BigInt::from((t.modulus() - 1) / 2);
-    let k1_bound = ptxt_bound.clone();
-    assert!(range_check_centered(&k1, &-&k1_bound, &k1_bound));
-    assert!(range_check_standard(&k1_assigned, &k1_bound, &p));
-
-    // Calculate bounds and perform asserts for polynomials depending on each qi
-    let mut pk_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
-    let mut r2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
-    let mut r1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
-    let mut p2_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
-    let mut p1_bounds: Vec<BigInt> = vec![BigInt::zero(); moduli.len()];
-    for i in 0..moduli.len() {
-        // constraint. The coefficients of ct0i and ct1i should be in the range [-(qi-1)/2, (qi-1)/2]
-        let bound = (moduli_bigint[i].clone() - BigInt::from(1)) / BigInt::from(2);
-        assert!(range_check_centered(&ct0is[i], &-&bound, &bound));
-        assert!(range_check_centered(&ct1is[i], &-&bound, &bound));
-
-        // constraint. The coefficients of pk0i and pk1i should be in range [-(qi-1)/2 , (qi-1)/2]
-        pk_bounds[i] = bound.clone();
-        assert!(range_check_centered(
-            &pk0is[i],
-            &-&pk_bounds[i],
-            &pk_bounds[i]
-        ));
-        assert!(range_check_centered(
-            &pk1is[i],
-            &-&pk_bounds[i],
-            &pk_bounds[i]
-        ));
-        assert!(range_check_standard(&pk0is_assigned[i], &pk_bounds[i], &p));
-        assert!(range_check_standard(&pk1is_assigned[i], &pk_bounds[i], &p));
-
-        // constraint. The coefficients of r2i should be in the range [-(qi-1)/2, (qi-1)/2]
-        r2_bounds[i] = bound.clone();
-        assert!(range_check_centered(
-            &r2is[i],
-            &-&r2_bounds[i],
-            &r2_bounds[i]
-        ));
-        assert!(range_check_standard(&r2is_assigned[i], &r2_bounds[i], &p));
-
-        // constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range
-        // $[
-        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}|)}{q_i},
-        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B + \frac{t - 1}{2} \cdot |K_{0,i}| }{q_i}
-        // ]$
-        let r1i_bound =
-            (BigInt::from(&N + 2) * &bound + &gauss_bound + &ptxt_bound * BigInt::abs(&k0is[i]))
-                / &moduli_bigint[i];
-        r1_bounds[i] = r1i_bound.clone();
-        assert!(range_check_centered(
-            &r1is[i],
-            &-&r1_bounds[i],
-            &r1_bounds[i]
-        ));
-        assert!(range_check_standard(&r1is_assigned[i], &r1i_bound, &p));
-
-        // constraint. The coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
-        p2_bounds[i] = bound.clone();
-        assert!(range_check_centered(
-            &p2is[i],
-            &-&p2_bounds[i],
-            &p2_bounds[i]
-        ));
-        assert!(range_check_standard(&p2is_assigned[i], &p2_bounds[i], &p));
-
-        // constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range
-        // $[
-        //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B)}{q_i},
-        //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
-        // ]$
-        let p1i_bound = (BigInt::from(&N + 2) * &bound + &gauss_bound) / &moduli_bigint[i];
-        p1_bounds[i] = p1i_bound.clone();
-        assert!(range_check_centered(
-            &p1is[i],
-            &-&p1_bounds[i],
-            &p1_bounds[i]
-        ));
-        assert!(range_check_standard(&p1is_assigned[i], &p1i_bound, &p));
-    }
-
-    // Write out files ----------------------------------------------------------------------
-    let output_path = Path::new("src").join("data").join("pk_enc_data");
-
-    // Generate filename and write file
-    let filename = format!(
-        "pk_enc_{}_{}x{}_{}.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    write_json_to_file(&output_path, &filename, &json_data);
-
-    // Generate zeros filename and write file
-    let filename_zeroes = format!(
-        "pk_enc_{}_{}x{}_{}_zeroes.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    let zeroes_json = create_zeroes_json(params.degree(), moduli.len());
-    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
-
-    let filename_constants = format!(
-        "pk_enc_constants_{}_{}x{}_{}.rs",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-
-    write_constants_to_file(
-        &N,
-        &pk_bounds,
-        &e_bound,
-        &u_bound,
-        &r1_bounds,
-        &r2_bounds,
-        &p1_bounds,
-        &p2_bounds,
-        &k1_bound,
-        &moduli_bigint,
-        &k0is,
-        &filename_constants,
+/// Assign and return all of the centered input validation vectors to the ZKP modulus `p`.
+///
+/// # Arguments
+///
+/// * `pk0is` - Centered coefficients of first public key object for each RNS modulus
+/// * `pk1is` - Centered coefficients of second public key object for each RNS modulus
+/// * `r2is` - Centered coefficients of r2 for each RNS modulus
+/// * `r1is` - Centered coefficients of r1 for each RNS modulus
+/// * `p2is` - Centered coefficients of p2 for each RNS modulus
+/// * `p1is` - Centered coefficients of p1 for each RNS modulus
+/// * `ct0is` - Centered coefficients of first ciphertext object for each RNS modulus
+/// * `ct1is` - Centered coefficients of second ciphertext object for each RNS modulus
+/// * `u` - Centered coefficients of secret polynomial used during encryption (sampled from secret key distribution)
+/// * `e0` - Centered coefficients of error polynomial used during encryption (sampled from error distribution)
+/// * `e1` - Centered coefficients of error polynomial used during encryption (sampled from error distribution)
+/// * `k1` - Centered coefficients of [Q*m] mod t
+/// * `p` - ZKP modulus
+///
+pub fn input_validation_vectors_standard_form(
+    pk0is: &[Vec<BigInt>],
+    pk1is: &[Vec<BigInt>],
+    r2is: &[Vec<BigInt>],
+    r1is: &[Vec<BigInt>],
+    p2is: &[Vec<BigInt>],
+    p1is: &[Vec<BigInt>],
+    ct0is: &[Vec<BigInt>],
+    ct1is: &[Vec<BigInt>],
+    u: &[BigInt],
+    e0: &[BigInt],
+    e1: &[BigInt],
+    k1: &[BigInt],
+    p: &BigInt,
+) -> (
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<Vec<BigInt>>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+    Vec<BigInt>,
+) {
+    (
+        reduce_coefficients_2d(pk0is, p),
+        reduce_coefficients_2d(pk1is, p),
+        reduce_coefficients_2d(r2is, p),
+        reduce_coefficients_2d(r1is, p),
+        reduce_coefficients_2d(p2is, p),
+        reduce_coefficients_2d(p1is, p),
+        reduce_coefficients_2d(ct0is, p),
+        reduce_coefficients_2d(ct1is, p),
+        reduce_coefficients(u, p),
+        reduce_coefficients(e0, p),
+        reduce_coefficients(e1, p),
+        reduce_coefficients(k1, p),
     )
 }
 
@@ -682,342 +806,6 @@ fn write_constants_to_file(
         k0is_str
     )
     .expect("Unable to write to file");
-}
-
-/// Adds two polynomials represented as vectors of `BigInt` coefficients in descending order of powers.
-///
-/// This function aligns two polynomials of potentially different lengths and adds their coefficients.
-/// It assumes that polynomials are represented from leading degree to degree zero, even if the
-/// coefficient at degree zero is zero. Leading zeros are not removed to keep the order of the
-/// polynomial correct, which in Greco's case is necessary so that the order can be checked.
-///
-/// # Arguments
-///
-/// * `poly1` - Coefficients of the first polynomial, from highest to lowest degree.
-/// * `poly2` - Coefficients of the second polynomial, from highest to lowest degree.
-///
-/// # Returns
-///
-/// A vector of `BigInt` coefficients representing the sum of the two polynomials.
-fn poly_add(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
-    // Determine the new length and create extended polynomials
-    let max_length = std::cmp::max(poly1.len(), poly2.len());
-    let mut extended_poly1 = vec![BigInt::zero(); max_length];
-    let mut extended_poly2 = vec![BigInt::zero(); max_length];
-
-    // Copy original coefficients into extended vectors
-    extended_poly1[max_length - poly1.len()..].clone_from_slice(poly1);
-    extended_poly2[max_length - poly2.len()..].clone_from_slice(poly2);
-
-    // Add the coefficients
-    let mut result = vec![BigInt::zero(); max_length];
-    for i in 0..max_length {
-        result[i] = &extended_poly1[i] + &extended_poly2[i];
-    }
-
-    result
-}
-
-/// Negates the coefficients of a polynomial represented as a slice of `BigInt` coefficients.
-///
-/// This function creates a new polynomial where each coefficient is the negation of the corresponding
-/// coefficient in the input polynomial.
-///
-/// # Arguments
-///
-/// * `poly` - A slice of `BigInt` representing the coefficients of the polynomial, with the highest
-///   degree term at index 0 and the constant term at the end.
-///
-/// # Returns
-///
-/// A vector of `BigInt` representing the polynomial with negated coefficients, with the same degree
-/// order as the input polynomial.
-fn poly_neg(poly: &[BigInt]) -> Vec<BigInt> {
-    poly.iter().map(|x| -x).collect()
-}
-
-/// Subtracts one polynomial from another, both represented as slices of `BigInt` coefficients in descending order.
-///
-/// This function subtracts the second polynomial (`poly2`) from the first polynomial (`poly1`). It does so
-/// by first negating the coefficients of `poly2` and then adding the result to `poly1`.
-///
-/// # Arguments
-///
-/// * `poly1` - A slice of `BigInt` representing the coefficients of the first polynomial (minuend), with
-///   the highest degree term at index 0 and the constant term at the end.
-/// * `poly2` - A slice of `BigInt` representing the coefficients of the second polynomial (subtrahend), with
-///   the highest degree term at index 0 and the constant term at the end.
-///
-/// # Returns
-///
-/// A vector of `BigInt` representing the coefficients of the resulting polynomial after subtraction.
-fn poly_sub(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
-    poly_add(poly1, &poly_neg(poly2))
-}
-
-/// Multiplies two polynomials represented as slices of `BigInt` coefficients naively.
-///
-/// Given two polynomials `poly1` and `poly2`, where each polynomial is represented by a slice of
-/// coefficients, this function computes their product. The order of coefficients (ascending or
-/// descending powers) should be the same for both input polynomials. The resulting polynomial is
-/// returned as a vector of `BigInt` coefficients in the same order as the inputs.
-///
-/// # Arguments
-///
-/// * `poly1` - A slice of `BigInt` representing the coefficients of the first polynomial.
-/// * `poly2` - A slice of `BigInt` representing the coefficients of the second polynomial.
-///
-/// # Returns
-///
-/// A vector of `BigInt` representing the coefficients of the resulting polynomial after multiplication,
-/// in the same order as the input polynomials.
-fn poly_mul(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
-    let product_len = poly1.len() + poly2.len() - 1;
-    let mut product = vec![BigInt::zero(); product_len];
-
-    for i in 0..poly1.len() {
-        for j in 0..poly2.len() {
-            product[i + j] += &poly1[i] * &poly2[j];
-        }
-    }
-
-    product
-}
-
-/// Divides one polynomial by another, returning the quotient and remainder, with both polynomials
-/// represented by vectors of `BigInt` coefficients in descending order of powers.
-///
-/// Given two polynomials `dividend` and `divisor`, where each polynomial is represented by a vector
-/// of coefficients in descending order of powers (i.e., the coefficient at index `i` corresponds
-/// to the term of degree `n - i`, where `n` is the degree of the polynomial), this function computes
-/// their quotient and remainder. The quotient and remainder are also represented in descending order
-/// of powers.
-///
-/// # Arguments
-///
-/// * `dividend` - A slice of `BigInt` representing the coefficients of the dividend polynomial.
-/// * `divisor` - A slice of `BigInt` representing the coefficients of the divisor polynomial. The leading
-///   coefficient (highest degree term) must be non-zero.
-///
-/// # Returns
-///
-/// A tuple containing two vectors of `BigInt`:
-/// * The first vector represents the quotient polynomial, with coefficients in descending order of powers.
-/// * The second vector represents the remainder polynomial, also in descending order of powers.
-///
-/// # Panics
-///
-/// This function will panic if the divisor is empty or if the leading coefficient of the divisor is zero.
-fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<BigInt>) {
-    assert!(
-        !divisor.is_empty() && !divisor[0].is_zero(),
-        "Leading coefficient of divisor cannot be zero"
-    );
-
-    let mut quotient = vec![BigInt::zero(); dividend.len() - divisor.len() + 1];
-    let mut remainder = dividend.to_vec();
-
-    for i in 0..quotient.len() {
-        let coeff = &remainder[i] / &divisor[0];
-        quotient[i] = coeff.clone();
-
-        for j in 0..divisor.len() {
-            remainder[i + j] = &remainder[i + j] - &divisor[j] * &coeff;
-        }
-    }
-
-    while remainder.len() > 0 && remainder[0].is_zero() {
-        remainder.remove(0);
-    }
-
-    (quotient, remainder)
-}
-
-/// Multiplies each coefficient of a polynomial by a scalar.
-///
-/// This function takes a polynomial represented as a vector of `BigInt` coefficients and multiplies each
-/// coefficient by a given scalar.
-///
-/// # Arguments
-///
-/// * `poly` - A slice of `BigInt` representing the coefficients of the polynomial, with the highest degree term
-///   at index 0 and the constant term at the end.
-/// * `scalar` - A `BigInt` representing the scalar by which each coefficient of the polynomial will be multiplied.
-///
-/// # Returns
-///
-/// A vector of `BigInt` representing the polynomial with each coefficient multiplied by the scalar, maintaining
-/// the same order of coefficients as the input polynomial.
-fn poly_scalar_mul(poly: &[BigInt], scalar: &BigInt) -> Vec<BigInt> {
-    poly.iter().map(|coeff| coeff * scalar).collect()
-}
-
-/// Reduces the coefficients of a polynomial by dividing it with a cyclotomic polynomial
-/// and updating the coefficients with the remainder.
-///
-/// This function performs a polynomial long division of the input polynomial (represented by
-/// `coefficients`) by the given cyclotomic polynomial (represented by `cyclo`). It replaces
-/// the original coefficients with the coefficients of the remainder from this division.
-///
-/// # Arguments
-///
-/// * `coefficients` - A mutable reference to a `Vec<BigInt>` containing the coefficients of
-///   the polynomial to be reduced. The coefficients are in descending order of degree,
-///   i.e., the first element is the coefficient of the highest degree term.
-/// * `cyclo` - A slice of `BigInt` representing the coefficients of the cyclotomic polynomial.
-///   The coefficients are also in descending order of degree.
-///
-/// # Panics
-///
-/// This function will panic if the remainder length exceeds the degree of the cyclotomic polynomial,
-/// which would indicate an issue with the division operation.
-fn reduce_coefficients_by_cyclo(coefficients: &mut Vec<BigInt>, cyclo: &[BigInt]) {
-    // Perform polynomial long division, assuming poly_div returns (quotient, remainder)
-    let (_, remainder) = poly_div(&coefficients, cyclo);
-
-    let N = cyclo.len() - 1;
-    let mut out: Vec<BigInt> = vec![BigInt::zero(); N];
-
-    // Calculate the starting index in `out` where the remainder should be copied
-    let start_idx = N - remainder.len();
-
-    // Copy the remainder into the `out` vector starting from `start_idx`
-    out[start_idx..].clone_from_slice(&remainder);
-
-    // Resize the original `coefficients` vector to fit the result and copy the values
-    coefficients.clear();
-    coefficients.extend(out);
-}
-
-/// Reduces a number modulo a prime modulus and centers it.
-///
-/// This function takes an arbitrary number and reduces it modulo the specified prime modulus.
-/// After reduction, the number is adjusted to be within the symmetric range
-/// [−(modulus−1)/2, (modulus−1)/2]. If the number is already within this range, it remains unchanged.
-///
-/// # Parameters
-///
-/// - `x`: A reference to a `BigInt` representing the number to be reduced and centered.
-/// - `modulus`: A reference to the prime modulus `BigInt` used for reduction.
-/// - `half_modulus`: A reference to a `BigInt` representing half of the modulus used to center the coefficient.
-///
-/// # Returns
-///
-/// - A `BigInt` representing the reduced and centered number.
-fn reduce_and_center(x: &BigInt, modulus: &BigInt, half_modulus: &BigInt) -> BigInt {
-    // Calculate the remainder ensuring it's non-negative
-    let mut r = x % modulus;
-    if r < BigInt::zero() {
-        r += modulus;
-    }
-
-    // Adjust the remainder if it is greater than half_modulus
-    if r > *half_modulus {
-        r -= modulus;
-    }
-
-    r
-}
-
-/// Reduces and centers polynomial coefficients modulo a prime modulus.
-///
-/// This function iterates over a mutable slice of polynomial coefficients, reducing each coefficient
-/// modulo a given prime modulus and adjusting the result to be within the symmetric range
-/// [−(modulus−1)/2, (modulus−1)/2].
-///
-/// # Parameters
-///
-/// - `coefficients`: A mutable slice of `BigInt` coefficients to be reduced and centered.
-/// - `modulus`: A prime modulus `BigInt` used for reduction and centering.
-///
-/// # Panics
-///
-/// - Panics if `modulus` is zero due to division by zero.
-fn reduce_and_center_coefficients_mut(coefficients: &mut [BigInt], modulus: &BigInt) {
-    let half_modulus = modulus / BigInt::from(2);
-    coefficients
-        .iter_mut()
-        .for_each(|x| *x = reduce_and_center(x, modulus, &half_modulus));
-}
-fn reduce_and_center_coefficients(coefficients: &mut [BigInt], modulus: &BigInt) -> Vec<BigInt> {
-    let half_modulus = modulus / BigInt::from(2);
-    coefficients
-        .iter()
-        .map(|x| reduce_and_center(x, modulus, &half_modulus))
-        .collect()
-}
-
-/// Reduces a polynomial's coefficients within a polynomial ring defined by a cyclotomic polynomial and a modulus.
-///
-/// This function performs two reductions on the polynomial represented by `coefficients`:
-/// 1. **Cyclotomic Reduction**: Reduces the polynomial by the cyclotomic polynomial, replacing
-///    the original coefficients with the remainder after polynomial division.
-/// 2. **Modulus Reduction**: Reduces the coefficients of the polynomial modulo a given modulus,
-///    centering the coefficients within the range [-modulus/2, modulus/2).
-///
-/// # Arguments
-///
-/// * `coefficients` - A mutable reference to a `Vec<BigInt>` representing the coefficients of the polynomial
-///   to be reduced. The coefficients should be in descending order of degree.
-/// * `cyclo` - A slice of `BigInt` representing the coefficients of the cyclotomic polynomial (typically x^N + 1).
-/// * `modulus` - A reference to a `BigInt` representing the modulus for the coefficient reduction. The coefficients
-///   will be reduced and centered modulo this value.
-fn reduce_in_ring(coefficients: &mut Vec<BigInt>, cyclo: &[BigInt], modulus: &BigInt) {
-    reduce_coefficients_by_cyclo(coefficients, cyclo);
-    reduce_and_center_coefficients_mut(coefficients, modulus);
-}
-
-/// Reduces each element in the given slice of `BigInt` by the modulus `p`.
-///
-/// This function takes a slice of `BigInt` coefficients and applies the modulus operation
-/// on each element. It ensures the result is within the range `[0, p-1]` by adding `p`
-/// before applying the modulus operation. The result is collected into a new `Vec<BigInt>`.
-///
-/// # Arguments
-///
-/// * `coefficients` - A slice of `BigInt` representing the coefficients to be reduced.
-/// * `p` - A reference to a `BigInt` that represents the modulus value.
-///
-/// # Returns
-///
-/// A `Vec<BigInt>` where each element is reduced modulo `p`.
-fn reduce_coefficients(coefficients: &[BigInt], p: &BigInt) -> Vec<BigInt> {
-    coefficients.iter().map(|coeff| (coeff + p) % p).collect()
-}
-
-fn reduce_coefficients_2d(coefficient_matrix: &[Vec<BigInt>], p: &BigInt) -> Vec<Vec<BigInt>> {
-    coefficient_matrix
-        .iter()
-        .map(|coeffs| reduce_coefficients(coeffs, p))
-        .collect()
-}
-
-/// Mutably reduces each element in the given slice of `BigInt` by the modulus `p`.
-///
-/// This function modifies the given mutable slice of `BigInt` coefficients in place. It adds `p`
-/// to each element before applying the modulus operation, ensuring the results are within the range `[0, p-1]`.
-///
-/// # Arguments
-///
-/// * `coefficients` - A mutable slice of `BigInt` representing the coefficients to be reduced.
-/// * `p` - A reference to a `BigInt` that represents the modulus value.
-fn reduce_coefficients_mut(coefficients: &mut [BigInt], p: &BigInt) {
-    for coeff in coefficients.iter_mut() {
-        *coeff += p;
-        *coeff %= p;
-    }
-}
-
-fn range_check_centered(vec: &[BigInt], lower_bound: &BigInt, upper_bound: &BigInt) -> bool {
-    vec.iter()
-        .all(|coeff| coeff >= lower_bound && coeff <= upper_bound)
-}
-
-fn range_check_standard(vec: &[BigInt], bound: &BigInt, modulus: &BigInt) -> bool {
-    vec.iter().all(|coeff| {
-        (coeff >= &BigInt::from(0) && coeff <= bound)
-            || (coeff >= &(modulus - bound) && coeff < modulus)
-    })
 }
 
 fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
