@@ -24,7 +24,7 @@ use poly::*;
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
-struct InputValidationVectors {
+pub struct InputValidationVectors {
     pk0is: Vec<Vec<BigInt>>,
     pk1is: Vec<Vec<BigInt>>,
     ct0is: Vec<Vec<BigInt>>,
