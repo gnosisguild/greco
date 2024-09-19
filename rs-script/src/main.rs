@@ -172,8 +172,7 @@ impl InputValidationVectors {
     /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
     /// * `e1_rns` - Error polynomioal used in cihpertext sampled from error distribution.
     /// * `ct` - Ciphertext from fhe.rs.
-    /// * `pk` - Public Key from fhe.re.
-    ///
+    /// * `pk` - Public Key from fhe.rs.
     pub fn compute(
         pt: &Plaintext,
         u_rns: &Poly,
@@ -916,7 +915,6 @@ fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
 /// # Panics
 ///
 /// This function will panic if the file cannot be created or if writing to the file fails.
-
 fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json::Value) {
     let file_path = output_path.join(filename);
     let mut file = File::create(file_path).expect("Unable to create file");
