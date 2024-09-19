@@ -1,8 +1,10 @@
 mod poly;
 
-use fhe::bfv::{BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey};
+use fhe::bfv::{
+    BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
+};
 use fhe_math::{
-    rq::{Context, Poly, Representation},
+    rq::{Poly, Representation},
     zq::Modulus,
 };
 use fhe_traits::*;
@@ -163,7 +165,7 @@ fn main() {
     .unwrap();
 
     // Compute input validation vectors
-    let res = compute_input_validation_vectors(&ctx, &t, &pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk);
+    let res = compute_input_validation_vectors(&params, &pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk);
 
     // Create standard form versions with respect to p
     let res_std = res.standard_form(&p);
@@ -340,8 +342,7 @@ fn main() {
 ///
 /// # Arguments
 ///
-/// * `ctx` - Context object from fhe.rs holding information about elements in Rq.
-/// * `t` - Plaintext modulus object.
+/// * `params` - BFV parameters from fhe.rs.
 /// * `pt` - Plaintext from fhe.rs.
 /// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
 /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
@@ -349,9 +350,8 @@ fn main() {
 /// * `ct` - Ciphertext from fhe.rs.
 /// * `pk` - Public Key from fhe.re.
 ///
-fn compute_input_validation_vectors(
-    ctx: &Arc<Context>,
-    t: &Modulus,
+pub fn compute_input_validation_vectors(
+    params: &Arc<BfvParameters>,
     pt: &Plaintext,
     u_rns: &Poly,
     e0_rns: &Poly,
@@ -359,6 +359,9 @@ fn compute_input_validation_vectors(
     ct: &Ciphertext,
     pk: &PublicKey,
 ) -> InputValidationVectors {
+    // Get context, plaintext modulus, and degree
+    let ctx = params.ctx_at_level(pt.level()).unwrap();
+    let t = Modulus::new(params.plaintext()).unwrap();
     let N: u64 = ctx.degree as u64;
 
     // Calculate k1 (independent of qi), center and reverse
