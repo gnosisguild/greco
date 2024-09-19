@@ -165,7 +165,7 @@ fn main() {
     .unwrap();
 
     // Compute input validation vectors
-    let res = compute_input_validation_vectors(&params, &pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk);
+    let res = compute_input_validation_vectors(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk);
 
     // Create standard form versions with respect to p
     let res_std = res.standard_form(&p);
@@ -342,7 +342,6 @@ fn main() {
 ///
 /// # Arguments
 ///
-/// * `params` - BFV parameters from fhe.rs.
 /// * `pt` - Plaintext from fhe.rs.
 /// * `u_rns` - Private polynomial used in ciphertext sampled from secret key distribution.
 /// * `e0_rns` - Error polynomial used in ciphertext sampled from error distribution.
@@ -351,7 +350,6 @@ fn main() {
 /// * `pk` - Public Key from fhe.re.
 ///
 pub fn compute_input_validation_vectors(
-    params: &Arc<BfvParameters>,
     pt: &Plaintext,
     u_rns: &Poly,
     e0_rns: &Poly,
@@ -360,6 +358,7 @@ pub fn compute_input_validation_vectors(
     pk: &PublicKey,
 ) -> InputValidationVectors {
     // Get context, plaintext modulus, and degree
+    let params = &pk.par;
     let ctx = params.ctx_at_level(pt.level()).unwrap();
     let t = Modulus::new(params.plaintext()).unwrap();
     let N: u64 = ctx.degree as u64;
