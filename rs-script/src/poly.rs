@@ -1,7 +1,14 @@
 /// Provides helper methods that perform modular poynomial arithmetic over polynomials encoded in vectors
 /// of coefficients from largest degree to lowest.
+use itertools::Itertools;
 use num_bigint::BigInt;
 use num_traits::*;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::ParallelIterator;
+
+// NTT related
+pub(crate) use concrete_ntt::native64::Plan32 as PlanNtt;
+pub(crate) type NttUint = u64;
 
 /// Adds two polynomials represented as vectors of `BigInt` coefficients in descending order of powers.
 ///
@@ -30,9 +37,9 @@ pub fn poly_add(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
 
     // Add the coefficients
     let mut result = vec![BigInt::zero(); max_length];
-    for i in 0..max_length {
-        result[i] = &extended_poly1[i] + &extended_poly2[i];
-    }
+    result.iter_mut().enumerate().for_each(|(i, x)| {
+        *x = &extended_poly1[i] + &extended_poly2[i];
+    });
 
     result
 }
@@ -74,7 +81,7 @@ pub fn poly_sub(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
     poly_add(poly1, &poly_neg(poly2))
 }
 
-/// Multiplies two polynomials represented as slices of `BigInt` coefficients naively.
+/// Multiplies two polynomials represented as slices of `BigInt` coefficients using NNT.
 ///
 /// Given two polynomials `poly1` and `poly2`, where each polynomial is represented by a slice of
 /// coefficients, this function computes their product. The order of coefficients (ascending or
@@ -90,20 +97,26 @@ pub fn poly_sub(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
 ///
 /// A vector of `BigInt` representing the coefficients of the resulting polynomial after multiplication,
 /// in the same order as the input polynomials.
-pub fn poly_mul(poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
-    let product_len = poly1.len() + poly2.len() - 1;
-    let mut product = vec![BigInt::zero(); product_len];
+pub fn poly_mul(plan: &PlanNtt, poly1: &[BigInt], poly2: &[BigInt]) -> Vec<BigInt> {
+    let product_len_orig = poly1.len() + poly2.len() - 1;
 
-    for i in 0..poly1.len() {
-        for j in 0..poly2.len() {
-            product[i + j] += &poly1[i] * &poly2[j];
-        }
-    }
+    let mut poly1_padded = poly_bigint_into_uint_vec(poly1);
+    poly1_padded.resize(poly1.len().next_power_of_two() * 2, 0);
 
-    product
+    let mut poly2_padded = poly_bigint_into_uint_vec(poly2);
+    poly2_padded.resize(poly1_padded.len(), 0);
+
+    let product_len = poly1_padded.len();
+    let mut product = vec![u64::zero(); product_len];
+
+    plan.negacyclic_polymul(&mut product, &poly1_padded, &poly2_padded);
+
+    vec_uint_into_bigint_poly(&product, product_len_orig)
 }
 
-/// Divides one polynomial by another, returning the quotient and remainder, with both polynomials
+/// Divides one polynomial by another recursively based "divide-and-conquer" strategy.
+///
+/// Returns the quotient and remainder, with both polynomials
 /// represented by vectors of `BigInt` coefficients in descending order of powers.
 ///
 /// Given two polynomials `dividend` and `divisor`, where each polynomial is represented by a vector
@@ -133,6 +146,43 @@ pub fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<Bi
         "Leading coefficient of divisor cannot be zero"
     );
 
+    let n = dividend.len();
+    let m = divisor.len();
+
+    // Base case: if the degree of the dividend is less than the degree of the divisor
+    if n < m {
+        return (vec![BigInt::zero()], dividend.to_vec());
+    }
+
+    // Threshold for switching to standard division
+    if n - m < 32 {
+        return poly_div_schoolbook(dividend, divisor);
+    }
+
+    // Split the dividend into high and low parts
+    let k = n / 2;
+    let dividend_high = &dividend[..k];
+    let dividend_low = &dividend[k..];
+
+    // Compute Q_high = dividend_high / divisor
+    let (q_high, r_high) = poly_div(dividend_high, divisor);
+
+    // Compute A_new = (R_high shifted left by n - k) + dividend_low
+    let mut a_new = vec![BigInt::zero(); r_high.len() + dividend_low.len()];
+    a_new[..r_high.len()].clone_from_slice(&r_high[..]);
+    a_new[r_high.len()..r_high.len() + dividend_low.len()].clone_from_slice(dividend_low);
+
+    // Compute Q_low, R = A_new / divisor
+    let (q_low, r) = poly_div(&a_new, divisor);
+
+    // Combine Q_high and Q_low
+    let mut quotient = q_high;
+    quotient.extend_from_slice(&q_low);
+
+    (quotient, r)
+}
+
+fn poly_div_schoolbook(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<BigInt>) {
     let mut quotient = vec![BigInt::zero(); dividend.len() - divisor.len() + 1];
     let mut remainder = dividend.to_vec();
 
@@ -145,11 +195,71 @@ pub fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<Bi
         }
     }
 
-    while remainder.len() > 0 && remainder[0].is_zero() {
+    // Remove leading zeros from the remainder
+    while !remainder.is_empty() && remainder[0].is_zero() {
         remainder.remove(0);
     }
 
     (quotient, remainder)
+}
+
+/// Divides a polynomial by a cyclotomic polynomial, returning the quotient and remainder.
+///
+/// * `dividend` - A slice of `BigInt` representing the coefficients of the dividend polynomial.
+/// * `n` is the degree of the cyclotomic polynomial.
+///
+/// Assumes `dividend` polynomial is represented by a vector of coefficients in descending order of powers.
+pub fn poly_div_cyclo(dividend: &[BigInt], n: usize) -> (Vec<BigInt>, Vec<BigInt>) {
+    let m = dividend.len();
+    let q_len = if m >= n { m - n } else { 0 };
+    let mut remainder = dividend.to_vec();
+    let mut quotient = Vec::with_capacity(q_len);
+
+    for i in 0..q_len {
+        let q = std::mem::take(&mut remainder[i]);
+        quotient.push(q.clone());
+
+        let idx = i + n;
+        if idx < remainder.len() {
+            remainder[idx] -= &quotient[i];
+        } else {
+            remainder.resize(idx + 1, BigInt::zero());
+            remainder[idx] -= &quotient[i];
+        }
+    }
+
+    // Find the first non-zero index without modifying the vector
+    let first_non_zero = remainder
+        .iter()
+        .position(|x| !x.is_zero())
+        .unwrap_or(remainder.len());
+    let trimmed_remainder = &remainder[first_non_zero..];
+
+    (quotient, trimmed_remainder.to_vec())
+}
+
+// Computes the polynomial modulo a cyclotomic polynomial leveraging the stucture of the cyclotomic polynomial.
+//
+// * `dividend` is the polynomial to be reduced.
+// * `n` is the degree of the cyclotomic polynomial.
+//
+// Assumes `dividend` polynomial is represented by a vector of coefficients in descending order of powers.
+pub fn poly_modulo_cyclo(dividend: &[BigInt], n: usize) -> Vec<BigInt> {
+    let mut remainder = vec![BigInt::zero(); n];
+    let degree = dividend.len() - 1; // Highest exponent
+    for (i, coeff) in dividend.iter().enumerate() {
+        let e = degree - i; // Actual exponent of the term
+        let q = e / n;
+        let sign = if q % 2 == 0 {
+            BigInt::one()
+        } else {
+            -BigInt::one()
+        };
+        let r = e % n;
+        let remainder_index = n - 1 - r;
+        remainder[remainder_index] += sign * coeff;
+    }
+    remainder
 }
 
 /// Multiplies each coefficient of a polynomial by a scalar.
@@ -168,7 +278,7 @@ pub fn poly_div(dividend: &[BigInt], divisor: &[BigInt]) -> (Vec<BigInt>, Vec<Bi
 /// A vector of `BigInt` representing the polynomial with each coefficient multiplied by the scalar, maintaining
 /// the same order of coefficients as the input polynomial.
 pub fn poly_scalar_mul(poly: &[BigInt], scalar: &BigInt) -> Vec<BigInt> {
-    poly.iter().map(|coeff| coeff * scalar).collect()
+    poly.par_iter().map(|coeff| coeff * scalar).collect()
 }
 
 /// Reduces the coefficients of a polynomial by dividing it with a cyclotomic polynomial
@@ -191,14 +301,13 @@ pub fn poly_scalar_mul(poly: &[BigInt], scalar: &BigInt) -> Vec<BigInt> {
 /// This function will panic if the remainder length exceeds the degree of the cyclotomic polynomial,
 /// which would indicate an issue with the division operation.
 pub fn reduce_coefficients_by_cyclo(coefficients: &mut Vec<BigInt>, cyclo: &[BigInt]) {
-    // Perform polynomial long division, assuming poly_div returns (quotient, remainder)
-    let (_, remainder) = poly_div(&coefficients, cyclo);
+    let remainder = poly_modulo_cyclo(coefficients, cyclo.len() - 1);
 
-    let N = cyclo.len() - 1;
-    let mut out: Vec<BigInt> = vec![BigInt::zero(); N];
+    let n = cyclo.len() - 1;
+    let mut out: Vec<BigInt> = vec![BigInt::zero(); n];
 
     // Calculate the starting index in `out` where the remainder should be copied
-    let start_idx = N - remainder.len();
+    let start_idx = n - remainder.len();
 
     // Copy the remainder into the `out` vector starting from `start_idx`
     out[start_idx..].clone_from_slice(&remainder);
@@ -264,7 +373,7 @@ pub fn reduce_and_center_coefficients(
 ) -> Vec<BigInt> {
     let half_modulus = modulus / BigInt::from(2);
     coefficients
-        .iter()
+        .par_iter()
         .map(|x| reduce_and_center(x, modulus, &half_modulus))
         .collect()
 }
@@ -340,4 +449,17 @@ pub fn range_check_standard(vec: &[BigInt], bound: &BigInt, modulus: &BigInt) ->
         (coeff >= &BigInt::from(0) && coeff <= bound)
             || (coeff >= &(modulus - bound) && coeff < modulus)
     })
+}
+
+fn poly_bigint_into_uint_vec(vec: &[BigInt]) -> Vec<NttUint> {
+    vec.iter()
+        .map(|x| (x.to_i64().unwrap() as NttUint))
+        .collect_vec()
+}
+
+fn vec_uint_into_bigint_poly(vec: &[NttUint], size: usize) -> Vec<BigInt> {
+    vec.iter()
+        .take(size)
+        .map(|x| BigInt::from_i64(*x as i64).unwrap())
+        .collect_vec()
 }
