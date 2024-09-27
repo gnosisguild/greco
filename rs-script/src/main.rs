@@ -1,5 +1,6 @@
 mod poly;
 
+use concrete_ntt::native64::Plan32;
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
 };
@@ -8,9 +9,9 @@ use fhe_math::{
     zq::Modulus,
 };
 use fhe_traits::*;
-use itertools::izip;
+use itertools::{izip, Itertools};
 use num_bigint::BigInt;
-use num_traits::{Num, Signed, ToPrimitive, Zero};
+use num_traits::{FromPrimitive, Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{ParallelBridge, ParallelIterator};
@@ -21,6 +22,9 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
+use tracing::info_span;
+use tracing_forest::ForestLayer;
+use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Registry};
 
 use poly::*;
 
@@ -266,20 +270,16 @@ impl InputValidationVectors {
         cyclo[0] = BigInt::from(1u64); // x^N term
         cyclo[N as usize] = BigInt::from(1u64); // x^0 term
 
-        // Print
-        /*
-        println!("m = {:?}\n", &m);
-        println!("k1 = {:?}\n", &k1);
-        println!("u = {:?}\n", &u);
-        println!("e0 = {:?}\n", &e0);
-        println!("e1 = {:?}\n", &e1);
-         */
-
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
         let mut res = InputValidationVectors::new(num_moduli, N as usize);
 
+        let plan = PlanNtt::try_new(N as usize * 2).unwrap();
+        #[cfg(feature = "sanity-check")]
+        let plan_cyclo = PlanNtt::try_new(N as usize * 4).unwrap();
+
         // Perform the main computation logic
+        #[allow(clippy::type_complexity)]
         let results: Vec<(
             usize,
             Vec<BigInt>,
@@ -299,158 +299,210 @@ impl InputValidationVectors {
             pk1.coefficients().rows()
         )
         .enumerate()
+        // .take(1)
         .par_bridge()
         .map(
             |(i, (qi, ct0_coeffs, ct1_coeffs, pk0_coeffs, pk1_coeffs))| {
                 // --------------------------------------------------- ct0i ---------------------------------------------------
+                info_span!("results", i).in_scope(|| {
+                    // Convert to vectors of bigint, center, and reverse order.
+                    let mut ct0i: Vec<BigInt> =
+                        ct0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                    let mut ct1i: Vec<BigInt> =
+                        ct1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                    let mut pk0i: Vec<BigInt> =
+                        pk0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                    let mut pk1i: Vec<BigInt> =
+                        pk1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
 
-                // Convert to vectors of bigint, center, and reverse order.
-                let mut ct0i: Vec<BigInt> =
-                    ct0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-                let mut ct1i: Vec<BigInt> =
-                    ct1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-                let mut pk0i: Vec<BigInt> =
-                    pk0_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
-                let mut pk1i: Vec<BigInt> =
-                    pk1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
+                    let qi_bigint = BigInt::from(qi.modulus());
 
-                let qi_bigint = BigInt::from(qi.modulus());
+                    reduce_and_center_coefficients_mut(&mut ct0i, &qi_bigint);
+                    reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
+                    reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
+                    reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
 
-                reduce_and_center_coefficients_mut(&mut ct0i, &qi_bigint);
-                reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
-                reduce_and_center_coefficients_mut(&mut pk0i, &qi_bigint);
-                reduce_and_center_coefficients_mut(&mut pk1i, &qi_bigint);
+                    // k0qi = -t^{-1} mod qi
+                    let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
+                    let k0qi = BigInt::from(koqi_u64); // Do not need to center this
 
-                // k0qi = -t^{-1} mod qi
-                let koqi_u64 = qi.inv(qi.neg(t.modulus())).unwrap();
-                let k0qi = BigInt::from(koqi_u64); // Do not need to center this
+                    // ki = k1 * k0qi
+                    let ki = poly_scalar_mul(&k1, &k0qi);
 
-                // ki = k1 * k0qi
-                let ki = poly_scalar_mul(&k1, &k0qi);
+                    // Calculate ct0i_hat = pk0 * ui + e0i + ki
+                    let ct0i_hat = info_span!("compute ct0i_hat").in_scope(|| {
+                        let pk0i_times_u = poly_mul(&plan, &pk0i, &u);
 
-                // Calculate ct0i_hat = pk0 * ui + e0i + ki
-                let ct0i_hat = {
-                    let pk0i_times_u = poly_mul(&pk0i, &u);
-                    assert_eq!((pk0i_times_u.len() as u64) - 1, 2 * (N - 1));
+                        #[cfg(feature = "sanity-check")]
+                        assert_eq!((pk0i_times_u.len() as u64) - 1, 2 * (N - 1));
 
-                    let e0_plus_ki = poly_add(&e0, &ki);
-                    assert_eq!((e0_plus_ki.len() as u64) - 1, N - 1);
+                        let e0_plus_ki = poly_add(&e0, &ki);
 
-                    poly_add(&pk0i_times_u, &e0_plus_ki)
-                };
-                assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
+                        #[cfg(feature = "sanity-check")]
+                        assert_eq!((e0_plus_ki.len() as u64) - 1, N - 1);
 
-                // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
-                let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
-                reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint);
-                assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
+                        poly_add(&pk0i_times_u, &e0_plus_ki)
+                    });
 
-                // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
-                let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
-                assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
-                let mut ct0i_minus_ct0i_hat_mod_zqi = ct0i_minus_ct0i_hat.clone();
-                reduce_and_center_coefficients_mut(&mut ct0i_minus_ct0i_hat_mod_zqi, &qi_bigint);
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
 
-                // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
-                // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-                let (r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat_mod_zqi, &cyclo);
-                assert!(r2i_rem.is_empty());
-                assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
+                    // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
+                    let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
+                    info_span!("reduce_in_ring: ct0i_hat_mod_rqi % qi").in_scope(|| {
+                        reduce_in_ring(&mut ct0i_hat_mod_rqi, &cyclo, &qi_bigint);
+                    });
 
-                // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
-                let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
-                let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
-                reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
-                assert_eq!(&ct0i_minus_ct0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
-                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
 
-                // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
-                let r1i_num = poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo);
-                assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
+                    // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
+                    let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
 
-                let (r1i, r1i_rem) = poly_div(&r1i_num, &[qi_bigint.clone()]);
-                assert!(r1i_rem.is_empty());
-                assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
-                assert_eq!(&r1i_num, &poly_mul(&r1i, &[qi_bigint.clone()]));
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
 
-                // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
-                let r1i_times_qi = poly_scalar_mul(&r1i, &qi_bigint);
-                let mut ct0i_calculated =
-                    poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
+                    let mut ct0i_minus_ct0i_hat_mod_zqi = ct0i_minus_ct0i_hat.clone();
+                    reduce_and_center_coefficients_mut(
+                        &mut ct0i_minus_ct0i_hat_mod_zqi,
+                        &qi_bigint,
+                    );
 
-                while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
-                    ct0i_calculated.remove(0);
-                }
+                    // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
+                    // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                    let (r2i, _r2i_rem) = info_span!("poly_div_cyclo: r2i")
+                        .in_scope(|| poly_div_cyclo(&ct0i_minus_ct0i_hat_mod_zqi, cyclo.len() - 1));
 
-                assert_eq!(&ct0i, &ct0i_calculated);
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert!(_r2i_rem.is_empty());
+                        assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
+                    }
 
-                // --------------------------------------------------- ct1i ---------------------------------------------------
+                    // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
+                    let r2i_times_cyclo = info_span!("poly_mul: r2i * cyclo")
+                        .in_scope(|| poly_mul(&plan, &r2i, &cyclo));
+                    let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
+                    reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert_eq!(&ct0i_minus_ct0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
+                        assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                    }
 
-                // Calculate ct1i_hat = pk1i * ui + e1i
-                let ct1i_hat = {
-                    let pk1i_times_u = poly_mul(&pk1i, &u);
-                    assert_eq!((pk1i_times_u.len() as u64) - 1, 2 * (N - 1));
+                    // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                    let r1i_num = poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo);
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
 
-                    poly_add(&pk1i_times_u, &e1)
-                };
-                assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+                    let (r1i, _r1i_rem) = info_span!("poly_div: r1i_num / qi")
+                        .in_scope(|| poly_div(&r1i_num, &[qi_bigint.clone()]));
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert!(_r1i_rem.is_empty());
+                        assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
+                        assert_eq!(&r1i_num, &poly_mul(&plan_cyclo, &r1i, &[qi_bigint.clone()]));
+                    }
 
-                // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
-                let mut ct1i_hat_mod_rqi = ct1i_hat.clone();
-                reduce_in_ring(&mut ct1i_hat_mod_rqi, &cyclo, &qi_bigint);
-                assert_eq!(&ct1i, &ct1i_hat_mod_rqi);
+                    // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        let r1i_times_qi = info_span!("poly_scalar_mul: r1i * qi_bigint")
+                            .in_scope(|| poly_scalar_mul(&r1i, &qi_bigint));
+                        let mut ct0i_calculated =
+                            poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
 
-                // Compute p2i numerator = ct1i - ct1i_hat
-                let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
-                assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
-                let mut ct1i_minus_ct1i_hat_mod_zqi = ct1i_minus_ct1i_hat.clone();
-                reduce_and_center_coefficients_mut(&mut ct1i_minus_ct1i_hat_mod_zqi, &qi_bigint);
+                        while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
+                            ct0i_calculated.remove(0);
+                        }
 
-                // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
-                // and reduce/center the resulting coefficients to produce:
-                // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-                let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_zqi, &cyclo.clone());
-                assert!(p2i_rem.is_empty());
-                assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
+                        assert_eq!(&ct0i, &ct0i_calculated);
+                    }
 
-                // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
-                let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
-                let mut p2i_times_cyclo_mod_zqi = p2i_times_cyclo.clone();
-                reduce_and_center_coefficients_mut(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
-                assert_eq!(&ct1i_minus_ct1i_hat_mod_zqi, &p2i_times_cyclo_mod_zqi);
-                assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                    // --------------------------------------------------- ct1i ---------------------------------------------------
 
-                // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
-                let p1i_num = poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo);
-                assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
+                    // Calculate ct1i_hat = pk1i * ui + e1i
+                    let ct1i_hat = info_span!("poly_mul: pk1i * u)").in_scope(|| {
+                        let pk1i_times_u = poly_mul(&plan, &pk1i, &u);
+                        #[cfg(feature = "sanity-check")]
+                        assert_eq!((pk1i_times_u.len() as u64) - 1, 2 * (N - 1));
 
-                let (p1i, p1i_rem) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
-                assert!(p1i_rem.is_empty());
-                assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
-                assert_eq!(&p1i_num, &poly_mul(&p1i, &[qi_bigint.clone()]));
+                        poly_add(&pk1i_times_u, &e1)
+                    });
 
-                // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
-                let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
-                let mut ct1i_calculated =
-                    poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
 
-                while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
-                    ct1i_calculated.remove(0);
-                }
+                    // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
+                    let mut ct1i_hat_mod_rqi = ct1i_hat.clone();
+                    info_span!("reduce_in_ring: ct1i_hat_mod_rqi % qi_bigint")
+                        .in_scope(|| reduce_in_ring(&mut ct1i_hat_mod_rqi, &cyclo, &qi_bigint));
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!(&ct1i, &ct1i_hat_mod_rqi);
 
-                assert_eq!(&ct1i, &ct1i_calculated);
+                    // Compute p2i numerator = ct1i - ct1i_hat
+                    let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+                    let mut ct1i_minus_ct1i_hat_mod_zqi = ct1i_minus_ct1i_hat.clone();
+                    reduce_and_center_coefficients_mut(
+                        &mut ct1i_minus_ct1i_hat_mod_zqi,
+                        &qi_bigint,
+                    );
 
-                /*
-                println!("qi = {:?}\n", &qi_bigint);
-                println!("ct0i = {:?}\n", &ct0i);
-                println!("k0qi = {:?}\n", &k0qi);
-                println!("pk0 = Polynomial({:?})\n", &pk0i);
-                println!("pk1 = Polynomial({:?})\n", &pk1i);
-                println!("ki = {:?}\n", &ki);
-                println!("ct0i_hat_mod_rqi = {:?}\n", &ct0i_hat_mod_rqi);
-                */
+                    // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
+                    // and reduce/center the resulting coefficients to produce:
+                    // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
+                    let (p2i, _p2i_rem) = info_span!("poly_div_cyclo: p2i").in_scope(|| {
+                        poly_div_cyclo(&ct1i_minus_ct1i_hat_mod_zqi, &cyclo.len() - 1)
+                    });
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert!(_p2i_rem.is_empty());
+                        assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
+                    }
 
-                (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i)
+                    // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
+                    let p2i_times_cyclo = info_span!("poly_mul p2i_times_cyclo")
+                        .in_scope(|| poly_mul(&plan, &p2i, &cyclo));
+                    let mut p2i_times_cyclo_mod_zqi = p2i_times_cyclo.clone();
+                    reduce_and_center_coefficients_mut(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert_eq!(&ct1i_minus_ct1i_hat_mod_zqi, &p2i_times_cyclo_mod_zqi);
+                        assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                    }
+
+                    // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
+                    let p1i_num = poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo);
+                    #[cfg(feature = "sanity-check")]
+                    assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
+
+                    let (p1i, _p1i_rem) = info_span!("poly_div: p1i / p")
+                        .in_scope(|| poly_div(&p1i_num, &[BigInt::from(qi.modulus())]));
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        assert!(_p1i_rem.is_empty());
+                        assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
+                        assert_eq!(&p1i_num, &poly_mul(&plan_cyclo, &p1i, &[qi_bigint.clone()]));
+                    }
+
+                    // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
+                    #[cfg(feature = "sanity-check")]
+                    {
+                        let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
+                        let mut ct1i_calculated =
+                            poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
+
+                        while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
+                            ct1i_calculated.remove(0);
+                        }
+
+                        assert_eq!(&ct1i, &ct1i_calculated);
+                    }
+
+                    (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i)
+                })
             },
         )
         .collect();
@@ -818,16 +870,22 @@ impl InputValidationBounds {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set up the BFV parameters
-    let N: u64 = 128;
-    let plaintext_modulus: u64 = 65537;
-    let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(tracing::Level::INFO.into())
+        .from_env_lossy();
 
-    let params = BfvParametersBuilder::new()
-        .set_degree(N as usize)
-        .set_plaintext_modulus(plaintext_modulus)
-        .set_moduli(&moduli)
-        .build_arc()?;
+    let subscriber = Registry::default()
+        .with(env_filter)
+        .with(ForestLayer::default());
+
+    let _ = tracing::subscriber::set_global_default(subscriber);
+
+    // TODO: add method `default_parameter_128(plaintext_nbits: usize, log2_n: usize) -> BfvParameters` in fhe-rs fork
+    // TODO: and cache?
+    let params = info_span!("BfvParameters::default_parameters_128")
+        .in_scope(|| BfvParameters::default_parameters_128(20)[4].clone());
+    let N: u64 = params.degree() as u64;
+    let moduli = params.moduli().to_vec();
 
     // Extract plaintext modulus
     let t = Modulus::new(params.plaintext())?;
@@ -843,11 +901,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let m = t.random_vec(N as usize, &mut rng);
     let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
     let pt = Plaintext::try_encode(&m, Encoding::poly(), &params)?;
-    let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
+    let (ct, u_rns, e0_rns, e1_rns) =
+        info_span!("encrypt").in_scope(|| pk.try_encrypt_extended(&pt, &mut rng))?;
 
     // Sanity check. m = Decrypt(ct)
-    let m_decrypted = unsafe { t.center_vec_vt(&sk.try_decrypt(&ct)?.value.into_vec()) };
-    assert_eq!(m_decrypted, m);
+    #[cfg(feature = "sanity-check")]
+    {
+        let m_decrypted = unsafe { t.center_vec_vt(&sk.try_decrypt(&ct)?.value.into_vec()) };
+        assert_eq!(m_decrypted, m);
+    }
 
     // Extract context
     let ctx = params.ctx_at_level(pt.level())?.clone();
@@ -859,16 +921,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
 
     // Compute input validation vectors
-    let res = InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk)?;
+    let res = info_span!("InputValidationVectors::compute")
+        .in_scope(|| InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk))?;
 
     // Create output json with standard form polynomials
     let json_data = res.standard_form(&p).to_json();
 
     // Calculate bounds ---------------------------------------------------------------------
-    let bounds = InputValidationBounds::compute(&params, pt.level())?;
+    let bounds = info_span!("InputValidationBounds::compute")
+        .in_scope(|| InputValidationBounds::compute(&params, pt.level()))?;
 
     // Check the constraints
-    bounds.check_constraints(&res, &p);
+    info_span!("bounds.check_constraints").in_scope(|| bounds.check_constraints(&res, &p));
 
     let moduli_bitsize = {
         if let Some(&max_value) = ctx.moduli().iter().max() {
