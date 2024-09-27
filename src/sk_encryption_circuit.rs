@@ -6,11 +6,58 @@ use axiom_eth::rlc::{
     chip::RlcChip,
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
 };
+
+use axiom_eth::halo2curves::bn256::{Bn256, Fq, Fr, G1Affine};
+
 use halo2_base::{
+    halo2_proofs::{
+        circuit::{Layouter, SimpleFloorPlanner, Value},
+        dev::MockProver,
+        plonk::{
+            create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Assigned, Circuit, Column,
+            ConstraintSystem, Error, Fixed, Instance, ProvingKey, VerifyingKey,
+        },
+        poly::{
+            commitment::{Params, ParamsProver},
+            kzg::{
+                commitment::{KZGCommitmentScheme, ParamsKZG},
+                multiopen::{ProverGWC, VerifierGWC},
+                strategy::AccumulatorStrategy,
+            },
+            Rotation, VerificationStrategy,
+        },
+        transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
+    },
     gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
     QuantumCell::Constant,
 };
+use itertools::Itertools;
+use rand::{rngs::OsRng, RngCore};
+#[cfg(feature = "revm")]
+use snark_verifier::loader::evm::{deploy_and_call, encode_calldata};
+use snark_verifier::{
+    loader::evm::{self, EvmLoader},
+    pcs::kzg::{Gwc19, KzgAs},
+    system::halo2::{compile, transcript::evm::EvmTranscript, Config},
+    verifier::{self, SnarkVerifier},
+};
+use std::rc::Rc;
+
+use std::path::Path;
+use std::fs;
+
+type PlonkVerifier = verifier::plonk::PlonkVerifier<KzgAs<Bn256, Gwc19>>;
+
+//use halo2_base::{
+//    gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
+//    utils::ScalarField,
+//    QuantumCell::Constant,
+//    halo2_proofs::poly::kzg::commitment::ParamsKZG,
+//
+//};
+//
+
 use serde::Deserialize;
 
 /// Helper function to define the parameters of the RlcCircuit. This is a non-optimized configuration that makes use of a single advice column. Use this for testing purposes only.
@@ -26,6 +73,84 @@ pub fn test_params() -> RlcCircuitParams {
         },
         num_rlc_columns: 1,
     }
+}
+
+pub fn gen_srs(k: u32) -> ParamsKZG<Bn256> {
+    ParamsKZG::<Bn256>::setup(k, OsRng)
+}
+
+
+pub fn gen_proof<C: Circuit<Fr>>(
+    params: &ParamsKZG<Bn256>,
+    pk: &ProvingKey<G1Affine>,
+    circuit: C,
+    instances: Vec<Vec<Fr>>,
+) -> Vec<u8> {
+    MockProver::run(params.k(), &circuit, instances.clone()).unwrap().assert_satisfied();
+
+    let instances = instances.iter().map(|instances| instances.as_slice()).collect_vec();
+    let proof = {
+        let mut transcript = TranscriptWriterBuffer::<_, G1Affine, _>::init(Vec::new());
+        create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<_>, _, _, EvmTranscript<_, _, _, _>, _>(
+            params,
+            pk,
+            &[circuit],
+            &[instances.as_slice()],
+            OsRng,
+            &mut transcript,
+        )
+        .unwrap();
+        transcript.finalize()
+    };
+
+    let accept = {
+        let mut transcript = TranscriptReadBuffer::<_, G1Affine, _>::init(proof.as_slice());
+        VerificationStrategy::<_, VerifierGWC<_>>::finalize(
+            verify_proof::<_, VerifierGWC<_>, _, EvmTranscript<_, _, _, _>, _>(
+                params.verifier_params(),
+                pk.get_vk(),
+                AccumulatorStrategy::new(params.verifier_params()),
+                &[instances.as_slice()],
+                &mut transcript,
+            )
+            .unwrap(),
+        )
+    };
+    assert!(accept);
+
+    proof
+}
+
+
+pub fn gen_evm_verifier(
+    params: &ParamsKZG<Bn256>,
+    vk: &VerifyingKey<G1Affine>,
+    num_instance: Vec<usize>,
+    path: Option<&Path>,
+) -> Vec<u8> {
+    let protocol = compile(params, vk, Config::kzg().with_num_instance(num_instance.clone()));
+    let vk = (params.get_g()[0], params.g2(), params.s_g2()).into();
+
+    let loader = EvmLoader::new::<Fq, Fr>();
+    let protocol = protocol.loaded(&loader);
+    let mut transcript = EvmTranscript::<_, Rc<EvmLoader>, _, _>::new(&loader);
+
+    let instances = transcript.load_instances(num_instance);
+    let proof = PlonkVerifier::read_proof(&vk, &protocol, &instances, &mut transcript).unwrap();
+    PlonkVerifier::verify(&vk, &protocol, &instances, &proof).unwrap();
+    let sol_code = loader.solidity_code();
+    if let Some(path) = path {
+        path.parent().and_then(|dir| fs::create_dir_all(dir).ok()).unwrap();
+        fs::write(path, sol_code).unwrap();
+    }
+
+    evm::compile_solidity(&loader.solidity_code())
+}
+
+pub fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: Vec<u8>) {
+    let calldata = encode_calldata(&instances, &proof);
+    let gas_cost = deploy_and_call(deployment_code, calldata).unwrap();
+    dbg!(gas_cost);
 }
 
 /// `BfvSkEncryptionCircuit` is a circuit that checks the correct formation of a ciphertext resulting from BFV secret key encryption
@@ -264,7 +389,9 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvSkEncryptionCircuit {
 #[cfg(test)]
 mod test {
 
-    use super::test_params;
+
+
+    use super::{test_params,gen_srs,evm_verify};
     use crate::{
         constants::sk_enc_constants_4096_2x55_65537::R1_BOUNDS,
         sk_encryption_circuit::BfvSkEncryptionCircuit,
@@ -281,53 +408,25 @@ mod test {
             plonk::{keygen_pk, keygen_vk, Any, SecondPhase},
         },
         utils::{
-            fs::gen_srs,
+            //fs::gen_srs,
             testing::{check_proof_with_instances, gen_proof_with_instances},
         },
     };
+    use super::{gen_proof, gen_evm_verifier};
+    
+    use std::path::Path;
+    //use snark_verifier_sdk::evm::{gen_evm_proof_shplonk, gen_evm_verifier_shplonk};
     use std::{fs::File, io::Read};
 
-    #[cfg(feature = "bench")]
     use axiom_eth::halo2curves::bn256::Bn256;
-    #[cfg(feature = "bench")]
     use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
-    #[cfg(feature = "bench")]
     use prettytable::{row, Table};
-
-    #[test]
-    pub fn test_sk_enc_valid() {
-        // 1. Define the inputs of the circuit
-        let file_path = "src/data/sk_enc_4096_2x55_65537.json";
-        let mut file = File::open(file_path).unwrap();
-        let mut data = String::new();
-        file.read_to_string(&mut data).unwrap();
-        let sk_enc_circuit = serde_json::from_str::<BfvSkEncryptionCircuit>(&data).unwrap();
-
-        // 2. Build the circuit for MockProver using the test parameters
-        let rlc_circuit_params = test_params();
-        let mut mock_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
-                .use_params(rlc_circuit_params.clone());
-        mock_builder.base.set_lookup_bits(8);
-
-        let instances = sk_enc_circuit.instances();
-
-        let rlc_circuit = RlcExecutor::new(mock_builder, sk_enc_circuit);
-
-        // 3. Run the mock prover. The circuit should be satisfied
-        MockProver::run(
-            rlc_circuit_params.base.k.try_into().unwrap(),
-            &rlc_circuit,
-            instances,
-        )
-        .unwrap()
-        .assert_satisfied();
-    }
 
     #[test]
     pub fn test_sk_enc_full_prover() {
         // 1. Define the inputs of the circuit.
         // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
+
         let file_path_zeroes = "src/data/sk_enc_4096_2x55_65537_zeroes.json";
         let mut file = File::open(file_path_zeroes).unwrap();
         let mut data = String::new();
@@ -361,6 +460,7 @@ mod test {
             RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
                 .use_params(rlc_circuit_params);
 
+
         let file_path = "src/data/sk_enc_4096_2x55_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
@@ -376,10 +476,32 @@ mod test {
             .builder
             .borrow_mut()
             .set_break_points(break_points);
+
+
+        //
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
+        //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances);
+        //let proof = gen_evm_proof_shplonk(&kzg_params, &pk, rlc_circuit, instances.clone());
 
         // 6. Verify the proof
-        check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+
+        //check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+        //
+        let num_instances = vec![1 as usize];
+
+        let deployment_code = gen_evm_verifier(&kzg_params, pk.get_vk(), num_instances,
+        Some(Path::new("sk.sol")),
+        );
+        println!("Deployment code size: {} bytes", deployment_code.len());
+
+       // let deployment_code = gen_evm_verifier_shplonk::<RlcCircuitBuilder<Fr>>(
+       // &kzg_params,
+       // pk.get_vk(),
+       // num_instances,
+       // Some(Path::new("examples/GrecoPlonkVerifier.sol")),
+       // );
+
+        evm_verify(deployment_code, instances, proof);
     }
 
     #[test]
