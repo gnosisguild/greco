@@ -14,6 +14,7 @@ serde_json = { version = "1.0", default-features = false }
 itertools = "0.11"
 prettytable = "0.10.0"
 snark-verifier = {git = "https://github.com/axiom-crypto/snark-verifier", features = ["revm"] }
+hex = "0.4"  # Or the latest version
 
 [features]
 bench = []

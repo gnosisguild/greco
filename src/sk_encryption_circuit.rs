@@ -7,11 +7,16 @@ use axiom_eth::rlc::{
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
 };
 
+use std::{
+    io::Write,
+    iter,
+    process::{Command, Stdio},
+};
+
 use axiom_eth::halo2curves::bn256::{Bn256, Fq, Fr, G1Affine};
 
-use halo2_base::{
+use axiom_eth::halo2_base::{
     halo2_proofs::{
-        circuit::{Layouter, SimpleFloorPlanner, Value},
         dev::MockProver,
         plonk::{
             create_proof, keygen_pk, keygen_vk, verify_proof, Advice, Assigned, Circuit, Column,
@@ -21,12 +26,12 @@ use halo2_base::{
             commitment::{Params, ParamsProver},
             kzg::{
                 commitment::{KZGCommitmentScheme, ParamsKZG},
-                multiopen::{ProverGWC, VerifierGWC},
+                multiopen::{ProverGWC, VerifierGWC, ProverSHPLONK,},
                 strategy::AccumulatorStrategy,
             },
             Rotation, VerificationStrategy,
         },
-        transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
+        transcript::{TranscriptReadBuffer, TranscriptWriterBuffer, Challenge255},
     },
     gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
@@ -39,7 +44,7 @@ use snark_verifier::loader::evm::{deploy_and_call, encode_calldata};
 use snark_verifier::{
     loader::evm::{self, EvmLoader},
     pcs::kzg::{Gwc19, KzgAs},
-    system::halo2::{compile, transcript::evm::EvmTranscript, Config},
+    system::halo2::{compile, transcript::evm::EvmTranscript, transcript::evm::ChallengeEvm, Config},
     verifier::{self, SnarkVerifier},
 };
 use std::rc::Rc;
@@ -79,6 +84,41 @@ pub fn gen_srs(k: u32) -> ParamsKZG<Bn256> {
     ParamsKZG::<Bn256>::setup(k, OsRng)
 }
 
+pub fn load_and_convert_bytecode(path: &Path) -> Vec<u8> {
+    // Read the content of the file
+    let hex_content = fs::read_to_string(path).expect("Failed to read the hex file");
+
+    // Trim any whitespace or newline characters
+    let hex_content_trimmed = hex_content.trim();
+
+    // Decode the hex string into raw bytes
+    hex::decode(hex_content_trimmed).expect("Failed to decode the hex content")
+}
+
+//pub fn gen_proof(
+//    params: &ParamsKZG<Bn256>,
+//    pk: &ProvingKey<G1Affine>,
+//    circuit: impl Circuit<Fr>,
+//    instances: &[&[Fr]],
+//) -> Vec<u8> {
+//    let rng = OsRng;
+//    //let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
+//    let mut transcript = TranscriptWriterBuffer::<_, G1Affine, _>::init(Vec::new());
+//    create_proof::<
+//        KZGCommitmentScheme<Bn256>,
+//        ProverGWC<_>,
+//        //ProverSHPLONK<'_, Bn256>,
+//        _,
+//        //ChallengeEvm<G1Affine>,
+//        //Challenge255<_>,
+//        _,
+//        //Blake2bWrite<Vec<u8>, G1Affine, _>,
+//        EvmTranscript<_, _, _, _>,
+//        _,
+//    >(params, pk, &[circuit], &[instances], rng, &mut transcript)
+//    .expect("prover should not fail");
+//    transcript.finalize()
+//}
 
 pub fn gen_proof<C: Circuit<Fr>>(
     params: &ParamsKZG<Bn256>,
@@ -120,7 +160,7 @@ pub fn gen_proof<C: Circuit<Fr>>(
 
     proof
 }
-
+//
 
 pub fn gen_evm_verifier(
     params: &ParamsKZG<Bn256>,
@@ -144,7 +184,47 @@ pub fn gen_evm_verifier(
         fs::write(path, sol_code).unwrap();
     }
 
-    evm::compile_solidity(&loader.solidity_code())
+
+    //evm::compile_solidity(&loader.solidity_code())
+    compile_solidity(&loader.solidity_code())
+}
+
+/// Compile given Solidity `code` into deployment bytecode.
+pub fn compile_solidity(code: &str) -> Vec<u8> {
+    let mut cmd = Command::new("solc")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .arg("--bin")
+        .arg("--optimize")
+        .arg("--optimize-runs")
+        .arg("50000")
+        .arg("--via-ir")
+        .arg("-")
+        .spawn()
+        .unwrap();
+    cmd.stdin.take().unwrap().write_all(code.as_bytes()).unwrap();
+    let output = cmd.wait_with_output().unwrap().stdout;
+    let binary = *split_by_ascii_whitespace(&output).last().unwrap();
+    assert!(!binary.is_empty());
+    hex::decode(binary).unwrap()
+}
+
+fn split_by_ascii_whitespace(bytes: &[u8]) -> Vec<&[u8]> {
+    let mut split = Vec::new();
+    let mut start = None;
+    for (idx, byte) in bytes.iter().enumerate() {
+        if byte.is_ascii_whitespace() {
+            if let Some(start) = start.take() {
+                split.push(&bytes[start..idx]);
+            }
+        } else if start.is_none() {
+            start = Some(idx);
+        }
+    }
+    if let Some(last) = start {
+        split.push(&bytes[last..]);
+    }
+    split
 }
 
 pub fn evm_verify(deployment_code: Vec<u8>, instances: Vec<Vec<Fr>>, proof: Vec<u8>) {
@@ -391,7 +471,7 @@ mod test {
 
 
 
-    use super::{test_params,gen_srs,evm_verify};
+    use super::{test_params,gen_srs,evm_verify, load_and_convert_bytecode};
     use crate::{
         constants::sk_enc_constants_4096_2x55_65537::R1_BOUNDS,
         sk_encryption_circuit::BfvSkEncryptionCircuit,
@@ -400,7 +480,7 @@ mod test {
         circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions},
         utils::executor::RlcExecutor,
     };
-    use halo2_base::{
+    use axiom_eth::halo2_base::{
         gates::circuit::CircuitBuilderStage,
         halo2_proofs::{
             dev::{FailureLocation, MockProver, VerifyFailure},
@@ -412,14 +492,16 @@ mod test {
             testing::{check_proof_with_instances, gen_proof_with_instances},
         },
     };
+    
     use super::{gen_proof, gen_evm_verifier};
+    use hex;
     
     use std::path::Path;
     //use snark_verifier_sdk::evm::{gen_evm_proof_shplonk, gen_evm_verifier_shplonk};
     use std::{fs::File, io::Read};
 
     use axiom_eth::halo2curves::bn256::Bn256;
-    use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
+    use axiom_eth::halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
     use prettytable::{row, Table};
 
     #[test]
@@ -435,7 +517,7 @@ mod test {
 
         // 2. Generate (unsafe) trusted setup parameters
         // Here we are setting a small k for optimization purposes
-        let k = 14;
+        let k = 17;
         let kzg_params = gen_srs(k as u32);
 
         // 3. Build the circuit for key generation,
@@ -479,7 +561,11 @@ mod test {
 
 
         //
-        let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
+
+
+        let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances.clone());
+        //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
+        //let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
         //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances);
         //let proof = gen_evm_proof_shplonk(&kzg_params, &pk, rlc_circuit, instances.clone());
 
@@ -489,10 +575,28 @@ mod test {
         //
         let num_instances = vec![1 as usize];
 
+        //let binary_path = Path::new("/home/younes/work/Gnos/Start/Greco/3/greco/sk.bin");
+        //let deployment_code = load_binary_from_file(binary_path);
+
+        // Path to the file containing your hex-encoded bytecode
+        //let binary_path = Path::new("sk.bin");
+
+    // Convert the hex file content to raw bytes
+        //let raw_bytecode = load_and_convert_bytecode(binary_path);
+
+    // Now you can use `raw_bytecode` as your deployment code
+    //println!("Deployment code size: {} bytes", raw_bytecode.len());
+
+    // Example usage
+    //evm_verify(raw_bytecode, instances, proof);
+
+        //println!("Deployment code size: {} bytes", deployment_code.len());
+
         let deployment_code = gen_evm_verifier(&kzg_params, pk.get_vk(), num_instances,
         Some(Path::new("sk.sol")),
         );
-        println!("Deployment code size: {} bytes", deployment_code.len());
+
+
 
        // let deployment_code = gen_evm_verifier_shplonk::<RlcCircuitBuilder<Fr>>(
        // &kzg_params,
