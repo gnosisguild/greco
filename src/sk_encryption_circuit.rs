@@ -15,7 +15,7 @@ use std::{
 
 use axiom_eth::halo2curves::bn256::{Bn256, Fq, Fr, G1Affine};
 
-use axiom_eth::halo2_base::{
+use halo2_base::{
     halo2_proofs::{
         dev::MockProver,
         plonk::{
@@ -126,7 +126,6 @@ pub fn gen_proof<C: Circuit<Fr>>(
     circuit: C,
     instances: Vec<Vec<Fr>>,
 ) -> Vec<u8> {
-    MockProver::run(params.k(), &circuit, instances.clone()).unwrap().assert_satisfied();
 
     let instances = instances.iter().map(|instances| instances.as_slice()).collect_vec();
     let proof = {
@@ -157,7 +156,6 @@ pub fn gen_proof<C: Circuit<Fr>>(
         )
     };
     assert!(accept);
-
     proof
 }
 //
@@ -480,11 +478,11 @@ mod test {
         circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions},
         utils::executor::RlcExecutor,
     };
-    use axiom_eth::halo2_base::{
+    use halo2_base::{
         gates::circuit::CircuitBuilderStage,
         halo2_proofs::{
             dev::{FailureLocation, MockProver, VerifyFailure},
-            halo2curves::bn256::Fr,
+            //halo2curves::bn256::Fr,
             plonk::{keygen_pk, keygen_vk, Any, SecondPhase},
         },
         utils::{
@@ -501,7 +499,7 @@ mod test {
     use std::{fs::File, io::Read};
 
     use axiom_eth::halo2curves::bn256::Bn256;
-    use axiom_eth::halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
+    use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
     use prettytable::{row, Table};
 
     #[test]
@@ -549,7 +547,9 @@ mod test {
         file.read_to_string(&mut data).unwrap();
         let sk_enc_circuit = serde_json::from_str::<BfvSkEncryptionCircuit>(&data).unwrap();
 
-        let instances = sk_enc_circuit.instances();
+
+
+        //let instances = sk_enc_circuit.instances();
 
         let rlc_circuit = RlcExecutor::new(proof_gen_builder, sk_enc_circuit.clone());
 
@@ -562,6 +562,7 @@ mod test {
 
         //
 
+        let instances = rlc_circuit.0.logic_inputs.instances();
 
         let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances.clone());
         //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
@@ -590,6 +591,8 @@ mod test {
     // Example usage
     //evm_verify(raw_bytecode, instances, proof);
 
+
+        //println!("Deployment code size: {} bytes", deployment_code.len());
         //println!("Deployment code size: {} bytes", deployment_code.len());
 
         let deployment_code = gen_evm_verifier(&kzg_params, pk.get_vk(), num_instances,
