@@ -482,7 +482,7 @@ mod test {
         gates::circuit::CircuitBuilderStage,
         halo2_proofs::{
             dev::{FailureLocation, MockProver, VerifyFailure},
-            //halo2curves::bn256::Fr,
+            halo2curves::bn256::Fr,
             plonk::{keygen_pk, keygen_vk, Any, SecondPhase},
         },
         utils::{
