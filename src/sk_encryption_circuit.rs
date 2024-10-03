@@ -16,7 +16,7 @@ use std::{
 };
 
 use axiom_eth::halo2curves::bn256::{Bn256, Fq, Fr, G1Affine};
-//use snark_verifier_sdk::CircuitExt;
+use snark_verifier_sdk::CircuitExt;
 use axiom_eth::Field;
 
 use halo2_base::{
@@ -346,6 +346,7 @@ mod test {
     //    sk_encryption_circuit::BfvSkEncryptionCircuit,
     //};
     use snark_verifier_sdk::{
+
         constants::sk_enc_constants_4096_2x55_65537::R1_BOUNDS,
         halo2::BfvSkEncryptionCircuit::BfvSkEncryptionCircuit,
         };
@@ -379,11 +380,13 @@ mod test {
     use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
     use prettytable::{row, Table};
     //use axiom_eth::rlc::utils::two_phase::TwoPhaseCircuit;
+    use snark_verifier_sdk::CircuitExt;
 
     #[test]
     pub fn test_sk_enc_full_prover() {
         // 1. Define the inputs of the circuit.
         // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
+
 
         let file_path_zeroes = "src/data/sk_enc_4096_2x55_65537_zeroes.json";
         let mut file = File::open(file_path_zeroes).unwrap();
@@ -419,6 +422,7 @@ mod test {
                 .use_params(rlc_circuit_params);
 
 
+
         let file_path = "src/data/sk_enc_4096_2x55_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
@@ -426,8 +430,6 @@ mod test {
         let sk_enc_circuit = serde_json::from_str::<BfvSkEncryptionCircuit>(&data).unwrap();
 
 
-
-        //let instances = sk_enc_circuit.instances();
 
         let rlc_circuit = RlcExecutor::new(proof_gen_builder, sk_enc_circuit.clone());
 
@@ -438,9 +440,8 @@ mod test {
             .set_break_points(break_points);
 
 
-        //
+        let instances = rlc_circuit.instances();
 
-        let instances = rlc_circuit.0.logic_inputs.instances();
 
         //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances.clone());
         let proof = gen_evm_proof_shplonk::<RlcCircuit<axiom_eth::halo2curves::bn256::Fr, BfvSkEncryptionCircuit>>(&kzg_params, &pk, rlc_circuit, instances.clone());
@@ -448,16 +449,10 @@ mod test {
         // 6. Verify the proof
 
         //check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
-        //
-        let num_instances = vec![1 as usize];
 
-        //let binary_path = Path::new("/home/younes/work/Gnos/Start/Greco/3/greco/sk.bin");
-        //let deployment_code = load_binary_from_file(binary_path);
-
-        //let binary_path = Path::new("sk.bin");
-        //let raw_bytecode = load_and_convert_bytecode(binary_path);
-        //println!("Deployment code size: {} bytes", raw_bytecode.len());
-
+       let num_instances = instances.iter().map(Vec::len).collect();
+       //let num_instances = vec![instances.len()];
+       println!("num instances: {:?}", num_instances);
 
     let deployment_code = gen_evm_verifier_shplonk::<RlcCircuit<axiom_eth::halo2curves::bn256::Fr, BfvSkEncryptionCircuit>>(&kzg_params, pk.get_vk(), num_instances,
         Some(Path::new("sk.sol")),
