@@ -59,10 +59,10 @@ impl InputValidationVectors {
             pk1is: vec![vec![BigInt::zero(); degree]; num_moduli],
             ct0is: vec![vec![BigInt::zero(); degree]; num_moduli],
             ct1is: vec![vec![BigInt::zero(); degree]; num_moduli],
-            r1is: vec![vec![BigInt::zero(); 2 * (degree - 1)]; num_moduli],
-            r2is: vec![vec![BigInt::zero(); degree - 2]; num_moduli],
-            p1is: vec![vec![BigInt::zero(); 2 * (degree - 1)]; num_moduli],
-            p2is: vec![vec![BigInt::zero(); degree - 2]; num_moduli],
+            r1is: vec![vec![BigInt::zero(); 2 * (degree - 1) + 1]; num_moduli],
+            r2is: vec![vec![BigInt::zero(); degree - 2 + 1]; num_moduli],
+            p1is: vec![vec![BigInt::zero(); 2 * (degree - 1) + 1]; num_moduli],
+            p2is: vec![vec![BigInt::zero(); degree - 2 + 1]; num_moduli],
             k0is: vec![BigInt::zero(); num_moduli],
             u: vec![BigInt::zero(); degree],
             e0: vec![BigInt::zero(); degree],
@@ -819,9 +819,30 @@ impl InputValidationBounds {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up the BFV parameters
-    let N: u64 = 128;
+
+    let N: u64 = 1024;
+    //let N: u64 = 128;
+
     let plaintext_modulus: u64 = 65537;
-    let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
+
+    //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
+    let moduli: Vec<u64> = vec![
+      1152921504606584833,
+      1152921504598720513,
+      1152921504597016577,
+      1152921504595968001,
+      1152921504595640321,
+      1152921504593412097,
+      1152921504592822273,
+      1152921504592429057,
+      1152921504589938689,
+      1152921504586530817,
+      1152921504585547777,
+      1152921504583647233,
+      1152921504581877761,
+      1152921504581419009,
+      1152921504580894721 
+];
 
     let params = BfvParametersBuilder::new()
         .set_degree(N as usize)
