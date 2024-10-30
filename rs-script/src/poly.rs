@@ -212,7 +212,7 @@ pub fn reduce_coefficients_by_cyclo(coefficients: &mut Vec<BigInt>, cyclo: &[Big
 ///
 /// This function takes an arbitrary number and reduces it modulo the specified prime modulus.
 /// After reduction, the number is adjusted to be within the symmetric range
-/// [−(modulus−1)/2, (modulus−1)/2]. If the number is already within this range, it remains unchanged.
+/// [(−(modulus−1))/2, (modulus−1)/2]. If the number is already within this range, it remains unchanged.
 ///
 /// # Parameters
 ///
