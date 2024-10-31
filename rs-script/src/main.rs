@@ -785,7 +785,7 @@ impl InputValidationBounds {
             .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        writeln!(file, "/// The coefficients of the polynomials `r1is` should exist in the interval `[R1_LOW_BOUND[i], R1_UP_BOUND[i]]` where `R1_LOW_BOUND[i]` is equal to `(-(qi-1))/2` and `R1_UP_BOUND[i]` is equal to `((qi-1))/2`.")?;
+        writeln!(file, "/// The coefficients of the polynomials `r1is` should exist in the interval `[R1_LOW_BOUNDS[i], R1_UP_BOUNDS[i]]` where R1_LOW_BOUNDS is equal to $\\frac{{\\frac{{-(t - 1)}}{{2}} \\cdot |K_{{0,i}}| - (N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` and `R1_UP_BOUNDS[i]` is equal to `$\\frac{{\\frac{{(t - 1)}}{{2}} \\cdot |K_{{0,i}}| + (N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` .")?;
         writeln!(
             file,
             "pub const R1_LOW_BOUNDS: [i64; {}] = [{}];",
@@ -806,7 +806,7 @@ impl InputValidationBounds {
             .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        writeln!(file, "/// The coefficients of the polynomials `r2is` should exist in the interval `[-R2_BOUND[i], R2_BOUND[i]]` where `R2_BOUND[i]` is equal to $\\frac{{(N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B + \\frac{{t - 1}}{{2}} \\cdot |K_{{0,i}}|}}{{q_i}}`.")?;
+        writeln!(file, "/// The coefficients of the polynomials `r2is` should exist in the interval `[-R2_BOUND[i], R2_BOUND[i]]` where `R2_BOUND[i]` is equal to `(qi-1)/2`.")?;
         writeln!(
             file,
             "pub const R2_BOUNDS: [u64; {}] = [{}];",
@@ -842,7 +842,7 @@ impl InputValidationBounds {
             p2_bounds_str
         )?;
 
-        writeln!(file, "/// The coefficients of `k1` should exist in the interval `[K1_LOW_BOUND, K1_UP_BOUND]` where `K1_LOW_BOUND` is equal to `-(t-1)/2` and K1_UP_BOUND` is equal to `(t-1)/2`.")?;
+        writeln!(file, "/// The coefficients of `k1` should exist in the interval `[K1_LOW_BOUND, K1_UP_BOUND]` where `K1_LOW_BOUND` is equal to `(-(t-1))/2` and K1_UP_BOUND` is equal to `(t-1)/2`.")?;
         writeln!(file, "pub const K1_LOW_BOUND: i64 = {};", self.k1_low)?;
         writeln!(file, "pub const K1_UP_BOUND: u64 = {};", self.k1_up)?;
 
