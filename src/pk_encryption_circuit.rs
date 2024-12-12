@@ -606,7 +606,12 @@ mod test {
 
         //let proof = gen_proof(&kzg_params, &pk, rlc_circuit, instances.clone());
         let proof = gen_evm_proof_shplonk::<RlcCircuit<axiom_eth::halo2curves::bn256::Fr, BfvPkEncryptionCircuit>>(&kzg_params, &pk, rlc_circuit, instances.clone());
-        println!("Proof: {:?}", proof);}
+        // println!("Proof: {:?}", proof);}
+        let num_instances = instances.iter().map(Vec::len).collect();
+        let deployment_code = gen_evm_verifier_shplonk::<RlcCircuit<axiom_eth::halo2curves::bn256::Fr, BfvPkEncryptionCircuit>>(&kzg_params, pk.get_vk(), num_instances,
+        Some(Path::new("pk.sol")), );
+       // evm_verify(deployment_code, instances, proof);
+    }
 
     #[test]
     pub fn test_pk_enc_invalid_range() {
@@ -1050,4 +1055,4 @@ mod test {
         println!("bfv params: {:?}", file_path);
         table.printstd();
     }
-}
+    }
