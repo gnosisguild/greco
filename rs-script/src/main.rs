@@ -880,10 +880,10 @@ impl InputValidationBounds {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up the BFV parameters
 
-    let N: u64 = 1024;
+    let N: u64 = 2048;
 
     //let plaintext_modulus: u64 = 65537;
-    let plaintext_modulus: u64 = 2048;
+    let plaintext_modulus: u64 = 1032193;
 
    // let moduli: Vec<u64> = vec![
    //   1152921504606584833,
@@ -904,7 +904,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
    // ];
 
     //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
-    let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
+    let moduli: Vec<u64> = vec![0xffffffff00001];
     //let moduli: Vec<u64> = vec![1038337,18014398492704769,4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![1038337];
     //let moduli: Vec<u64> = vec![
