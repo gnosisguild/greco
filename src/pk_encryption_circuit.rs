@@ -540,12 +540,8 @@ mod test {
         // --------------------------------------------------
         // (A) Generate a proof & verify it locally
         // --------------------------------------------------
-
         // Zero file for keygen circuit sizing
-        // let file_path_zeros = "src/data/pk_enc_data/pk_enc_2048_1x52_1032193_zeroes.json";
-        // let empty_pk_enc_circuit: BfvPkEncryptionCircuit =
-        //     serde_json::from_reader(File::open(file_path_zeros).unwrap()).unwrap();
-        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(2048, 1);
+        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(1, 2048);
 
         let k = 17;
         let kzg_params = gen_srs(k);

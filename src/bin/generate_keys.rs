@@ -26,7 +26,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 struct EncryptionKeys {
-    verification_key: Vec<u8>,
     proving_key: Vec<u8>,
 }
 
@@ -61,7 +60,7 @@ fn main() {
         create_solidity_verifier(&kzg_params, &verification_key, public_instances[0].len());
 
     // Persist generated artifacts
-    save_keys_to_file(&verification_key, &proving_key).expect("Failed to save keys to file");
+    save_keys_to_file(&proving_key).expect("Failed to save keys to file");
 
     save_solidity_verifier(&solidity_verifier).expect("Failed to save Solidity verifier");
 
@@ -112,11 +111,9 @@ fn create_solidity_verifier(
 // ----------------------
 
 fn save_keys_to_file(
-    verification_key: &VerifyingKey<G1Affine>,
     proving_key: &ProvingKey<G1Affine>,
 ) -> std::io::Result<()> {
     let keys = EncryptionKeys {
-        verification_key: verification_key.to_bytes(SerdeFormat::Processed),
         proving_key: proving_key.to_bytes(SerdeFormat::Processed),
     };
 
