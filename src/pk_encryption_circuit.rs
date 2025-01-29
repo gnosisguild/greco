@@ -78,6 +78,27 @@ pub struct BfvPkEncryptionCircuit {
     ct1is: Vec<Vec<String>>,
 }
 
+impl BfvPkEncryptionCircuit {
+    pub fn create_empty_circuit(num_moduli: usize, degree: usize) -> Self {
+        let zero_str = String::from("0");
+
+        BfvPkEncryptionCircuit {
+            pk0i: vec![vec![zero_str.clone(); degree]; num_moduli],
+            pk1i: vec![vec![zero_str.clone(); degree]; num_moduli],
+            ct0is: vec![vec![zero_str.clone(); degree]; num_moduli],
+            ct1is: vec![vec![zero_str.clone(); degree]; num_moduli],
+            r1is: vec![vec![zero_str.clone(); 2 * (degree - 1) + 1]; num_moduli],
+            r2is: vec![vec![zero_str.clone(); degree - 1]; num_moduli],
+            p1is: vec![vec![zero_str.clone(); 2 * (degree - 1) + 1]; num_moduli],
+            p2is: vec![vec![zero_str.clone(); degree - 1]; num_moduli],
+            u: vec![zero_str.clone(); degree],
+            e0: vec![zero_str.clone(); degree],
+            e1: vec![zero_str.clone(); degree],
+            k1: vec![zero_str.clone(); degree],
+        }
+    }
+}
+
 /// Payload returned by the first phase of the circuit to be reused in the second phase
 pub struct Payload<F: ScalarField> {
     pk0i_assigned: Vec<PolyAssigned<F>>,
@@ -521,9 +542,10 @@ mod test {
         // --------------------------------------------------
 
         // Zero file for keygen circuit sizing
-        let file_path_zeros = "src/data/pk_enc_data/pk_enc_2048_1x52_1032193_zeroes.json";
-        let empty_pk_enc_circuit: BfvPkEncryptionCircuit =
-            serde_json::from_reader(File::open(file_path_zeros).unwrap()).unwrap();
+        // let file_path_zeros = "src/data/pk_enc_data/pk_enc_2048_1x52_1032193_zeroes.json";
+        // let empty_pk_enc_circuit: BfvPkEncryptionCircuit =
+        //     serde_json::from_reader(File::open(file_path_zeros).unwrap()).unwrap();
+        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(2048, 1);
 
         let k = 17;
         let kzg_params = gen_srs(k);
@@ -568,7 +590,7 @@ mod test {
             .builder
             .borrow_mut()
             .set_break_points(break_points);
-        
+
         // Create a proof
         let mut rng = StdRng::seed_from_u64(OsRng.next_u64());
         let instance_refs = vec![instances[0].as_slice()];

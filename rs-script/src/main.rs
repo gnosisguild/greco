@@ -208,8 +208,6 @@ impl InputValidationVectors {
         e0_rns_copy.change_representation(Representation::PowerBasis);
         e1_rns_copy.change_representation(Representation::PowerBasis);
         
-
-
           
        // let mut u: Vec<BigInt> =
        //     u_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
@@ -221,10 +219,6 @@ impl InputValidationVectors {
 
        // let mut e1: Vec<BigInt> =
        //     e1_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
-
-
-
 
         let u: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
@@ -504,6 +498,7 @@ impl InputValidationVectors {
         Ok(res)
     }
 }
+
 
 /// The `InputValidationBounds` struct holds the bounds for various vectors and polynomials used in the input validation process.
 /// These bounds are calculated from a set of BFV encryption parameters and represent limits on the values of different fields
