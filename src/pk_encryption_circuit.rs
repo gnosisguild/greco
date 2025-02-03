@@ -2,7 +2,7 @@ use axiom_eth::rlc::{
     chip::RlcChip,
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
 };
-use halo2_base::{
+use axiom_eth::halo2_base::{
     gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
     QuantumCell::Constant,
@@ -444,7 +444,7 @@ mod test {
     use std::io::Read;
     use std::io::Write;
 
-    use halo2_base::{
+    use axiom_eth::halo2_base::{
         gates::circuit::CircuitBuilderStage,
         halo2_proofs::{
             dev::{FailureLocation, MockProver, VerifyFailure},
@@ -458,7 +458,7 @@ mod test {
             transcript::TranscriptWriterBuffer,
         },
         utils::{
-            fs::gen_srs,
+            fs::read_params,
             testing::{check_proof_with_instances, gen_proof_with_instances},
         },
     };
@@ -489,7 +489,7 @@ mod test {
         // 2. Generate (unsafe) trusted setup parameters
         // Here we are setting a small k for optimization purposes
         let k = 14;
-        let kzg_params = gen_srs(k as u32);
+        let kzg_params = read_params(k as u32);
 
         // 3. Build the circuit for key generation,
         let mut key_gen_builder =
@@ -543,8 +543,8 @@ mod test {
         // Zero file for keygen circuit sizing
         let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(1, 2048);
 
-        let k = 17;
-        let kzg_params = gen_srs(k);
+        let k = 15;
+        let kzg_params = read_params(k);
 
         // Build an RLC circuit for KeyGen
         let mut key_gen_builder =
@@ -632,7 +632,7 @@ mod test {
         let verifier_solidity: String = generator.render().expect("render contract");
 
         // Write it to a file
-        let mut file = File::create("./contracts/PKVerifier.sol").unwrap();
+        let mut file = File::create("./contracts/BfvPKEncryptionVerifier.sol").unwrap();
         file.write_all(verifier_solidity.as_bytes()).unwrap();
         println!("Solidity verifier contract written to PKVerifier.sol");
 

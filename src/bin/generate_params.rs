@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufWriter, Write};
 
 use axiom_eth::rlc::{
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions},
@@ -7,12 +7,13 @@ use axiom_eth::rlc::{
 };
 
 use greco::pk_encryption_circuit::BfvPkEncryptionCircuit;
-use halo2_base::{
+use axiom_eth::halo2_base::{
     gates::circuit::CircuitBuilderStage,
     halo2_proofs::{
         halo2curves::bn256::{Bn256, Fr, G1Affine},
         plonk::{keygen_pk, keygen_vk, ProvingKey, VerifyingKey},
         poly::kzg::commitment::ParamsKZG,
+        poly::commitment::Params,
         SerdeFormat,
     },
     utils::fs::gen_srs,
@@ -39,14 +40,16 @@ fn main() {
     let public_instances: Vec<Vec<Fr>> = empty_circuit.instances();
 
     // Generate structured reference string
-    let srs_degree = 17; // k
+    let srs_degree = 14; // k
     let kzg_params = gen_srs(srs_degree);
 
     // Configure and build RLC circuit
     let mut circuit_builder = RlcCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen, 0)
         .use_k(srs_degree as usize);
 
-    circuit_builder.base.set_lookup_bits((srs_degree - 1) as usize);
+    circuit_builder
+        .base
+        .set_lookup_bits((srs_degree - 1) as usize);
     circuit_builder.base.set_instance_columns(1);
 
     let rlc_executor = RlcExecutor::new(circuit_builder, empty_circuit.clone());
@@ -60,14 +63,15 @@ fn main() {
         create_solidity_verifier(&kzg_params, &verification_key, public_instances[0].len());
 
     // Persist generated artifacts
-    save_keys_to_file(&proving_key).expect("Failed to save keys to file");
+    save_params_to_file(&kzg_params, srs_degree).expect("Failed to save params to file");
 
     save_solidity_verifier(&solidity_verifier).expect("Failed to save Solidity verifier");
 
     println!(
         "Successfully generated and stored:\n\
-        - Cryptographic keys: bfv_encryption_keys.json\n\
-        - Verifier contract: BfvEncryptionVerifier.sol"
+        - Parameters: kzg_bn254_{}.bin\n\
+        - Verifier contract: BfvPKEncryptionVerifier.sol",
+        srs_degree
     );
 }
 
@@ -110,18 +114,20 @@ fn create_solidity_verifier(
 // File I/O Operations
 // ----------------------
 
-fn save_keys_to_file(
-    proving_key: &ProvingKey<G1Affine>,
-) -> std::io::Result<()> {
-    let keys = EncryptionKeys {
-        proving_key: proving_key.to_bytes(SerdeFormat::Processed),
-    };
+fn load_params_from_file(k: u32) -> std::io::Result<ParamsKZG<Bn256>> {
+    let mut file = File::open(format!("./params/kzg_bn254_{}.bin", k))?;
+    let params = ParamsKZG::<Bn256>::read(&mut file)?;
+    Ok(params)
+}
 
-    let keys_json = serde_json::to_string_pretty(&keys).expect("Failed to serialize keys to JSON");
-
-    File::create("./keys/bfv_encryption_keys.json")?.write_all(keys_json.as_bytes())
+fn save_params_to_file(params: &ParamsKZG<Bn256>, k: u32) -> std::io::Result<()> {
+    // Make sure the directory exists
+    std::fs::create_dir_all("./params")?;
+    let mut file = File::create(format!("./params/kzg_bn254_{}.bin", k))?;
+    params.write(&mut file)?;
+    Ok(())
 }
 
 fn save_solidity_verifier(contract_code: &str) -> std::io::Result<()> {
-    File::create("./contracts/BfvEncryptionVerifier.sol")?.write_all(contract_code.as_bytes())
+    File::create("./contracts/BfvPKEncryptionVerifier.sol")?.write_all(contract_code.as_bytes())
 }
