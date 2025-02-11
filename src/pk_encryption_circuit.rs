@@ -98,11 +98,15 @@ impl BfvPkEncryptionCircuit {
 ///Note as well that the values K0,i have to be the right ones (negation of the inverse of t modulu qi), but we assume that these are calculated by the verifier and not retrieved from the prover, hence no check is performed. For instance, if we have an evm verifier, then this verifier can for instance calculate them himself or retrieve them from the blockchain if these are published.
 
     pub fn check_polynomial_bounds(&self) {
+        //Note we are hardwiring the prime field of the snark in here. There should be a cleaner
+        //way to do this.
         let p = BigInt::from_str(
             "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         )
         .expect("Invalid prime number p");
         
+        //Note we are using PK_BOUND for all polynomials we are checking, as all these polynomials
+        //have the same bounds.
         let bounds: Vec<BigInt> = PK_BOUND.iter().map(|&b| BigInt::from(b)).collect(); // Convert PK_BOUND to BigInt
         let two = BigInt::from(2);
 
@@ -601,7 +605,9 @@ mod test {
         let instances = pk_enc_circuit.instances();
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
-        // 6. Verify the proof
+
+
+        // 6. Verify the proof. Note the first check is as well part of verifying the zkp
 
         pk_enc_circuit.check_polynomial_bounds();
         check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
@@ -667,7 +673,8 @@ mod test {
             .set_break_points(break_points);
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
-        // 6. Verify the proof
+
+        // 6. Verify the proof. Note the first check is as well part of verifying the zkp
 
         pk_enc_circuit.check_polynomial_bounds();
         check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
@@ -1103,7 +1110,7 @@ mod test {
             let proof = gen_proof_with_instances(&config.kzg_params, &pk, rlc_circuit, &[&instances[0]]);
             let proof_gen_time = timer.elapsed();
 
-            // 5. Verify the proof
+            // 6. Verify the proof. Note the first check is as well part of verifying the zkp
             let timer = std::time::Instant::now();
             pk_enc_circuit.check_polynomial_bounds();
             check_proof_with_instances(&config.kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
