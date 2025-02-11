@@ -18,8 +18,8 @@ use std::str::FromStr;
 use crate::{
 
 
-    //constants::pk_enc_constants::pk_enc_constants_1024_2x52_2048::{
-    constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
+    constants::pk_enc_constants::pk_enc_constants_1024_2x52_2048::{
+    //constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
         E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS, R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS,
         U_BOUND,
     },
@@ -552,8 +552,8 @@ mod test {
     #[test]
     fn test_pk_enc_valid() {
 
-        //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
-        let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
+        let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
+        //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
         let mut file = File::open(file_path_zeroes).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
@@ -588,8 +588,8 @@ mod test {
         proof_gen_builder.base.set_instance_columns(1);
 
 
-        //let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
-        let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+        let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
+        //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
@@ -620,8 +620,8 @@ mod test {
         // 1. Define the inputs of the circuit.
         // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
 
-        //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
-        let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
+        let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
+        //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
         let mut file = File::open(file_path_zeroes).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
@@ -656,8 +656,8 @@ mod test {
         proof_gen_builder.base.set_instance_columns(1);
 
 
-        //let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
-        let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+        let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
+        //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
         let mut data = String::new();
         file.read_to_string(&mut data).unwrap();
@@ -1026,7 +1026,9 @@ mod test {
     #[test]
     #[cfg(feature = "bench")]
     pub fn bench_pk_enc_full_prover() {
-        let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+
+        //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+        let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
 
         pub struct Config {
             kzg_params: ParamsKZG<Bn256>,
@@ -1055,7 +1057,8 @@ mod test {
             println!("Running bench for k={}", config.k);
             // 1. Define the inputs of the circuit.
             // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
-            let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
+            //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
+            let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
             let mut file = File::open(file_path_zeroes).unwrap();
             let mut data = String::new();
             file.read_to_string(&mut data).unwrap();
@@ -1090,7 +1093,8 @@ mod test {
                     .use_params(rlc_circuit_params);
             proof_gen_builder.base.set_lookup_bits(config.k - 1);
 
-            let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+            //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+            let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
             let mut file = File::open(file_path).unwrap();
             let mut data = String::new();
             file.read_to_string(&mut data).unwrap();
