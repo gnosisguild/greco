@@ -1,3 +1,5 @@
+use core::assert;
+
 use axiom_eth::rlc::{
     chip::RlcChip,
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
@@ -9,6 +11,10 @@ use halo2_base::{
 };
 use serde::Deserialize;
 
+use num_bigint::BigInt;
+use num_traits::{Zero, One};
+use std::str::FromStr;
+
 use crate::{
 
 
@@ -19,6 +25,7 @@ use crate::{
     },
     poly::{Poly, PolyAssigned},
 };
+
 
 /// Helper function to define the parameters of the RlcCircuit. This is a non-optimized configuration that makes use of a single advice column. Use this for testing purposes only.
 pub fn test_params() -> RlcCircuitParams {
@@ -84,15 +91,105 @@ pub struct Payload<F: ScalarField> {
     ct1is_assigned: Vec<PolyAssigned<F>>,
 }
 
+impl BfvPkEncryptionCircuit {
+    
+/// Helper functions added for checking if the public polynomials (Ct0i, Ct1i, Pk0i, Pk1i) are of the right degree. Also for checking if the coefficients of these polynomials are within the right bounds. Note these checks are necessary for the zkp to be valid. That is, it is true that we can always reduce these polynomials so as to be in R_qi, and hence have the right degree and the coefficients in the right bounds, but accepting polynomials that are not already in R_qi will allow an attacker to forge a valid proof for an invalid ciphertext, exploiting the fact that the equations checked with the zkp live in Z_p and not Z_qi. 
+///
+///Note as well that the values K0,i have to be the right ones (negation of the inverse of t modulu qi), but we assume that these are calculated by the verifier and not retrieved from the prover, hence no check is performed. For instance, if we have an evm verifier, then this verifier can for instance calculate them himself or retrieve them from the blockchain if these are published.
+
+    pub fn check_polynomial_bounds(&self) {
+        let p = BigInt::from_str(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        )
+        .expect("Invalid prime number p");
+        
+        let bounds: Vec<BigInt> = PK_BOUND.iter().map(|&b| BigInt::from(b)).collect(); // Convert PK_BOUND to BigInt
+        let two = BigInt::from(2);
+
+        fn is_in_bound(value: &str, bound: &BigInt, p: &BigInt) -> bool {
+            if let Ok(num) = BigInt::from_str(value) {
+                let adjusted = (num + bound) % p; // Apply transformation
+                adjusted >= BigInt::zero() && adjusted <= (bound * &BigInt::from(2)) // Check [0, 2*PK_BOUND]
+            } else {
+                false // If parsing fails, consider it invalid
+            }
+        }
+
+        // Helper function to check polynomial bounds per row
+        fn check_poly_bounds(poly: &Vec<Vec<String>>, bounds: &[BigInt], p: &BigInt) -> Vec<(usize, usize, String)> {
+            poly.iter()
+                .enumerate()
+                .flat_map(|(row, row_values)| {
+                    if row >= bounds.len() {
+                        return vec![]; // Avoid out-of-bounds indexing for PK_BOUND
+                    }
+                    let bound = &bounds[row];
+                    row_values.iter()
+                        .enumerate()
+                        .filter_map(|(col, value)| {
+                            if !is_in_bound(value, bound, p) {
+                                Some((row, col, value.clone())) // Collect invalid values
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect()
+        }
+
+        // Validate pk0i, pk1i, ct0is, ct1is
+        let pk0i_invalid = check_poly_bounds(&self.pk0i, &bounds, &p);
+        let pk1i_invalid = check_poly_bounds(&self.pk1i, &bounds, &p);
+        let ct0is_invalid = check_poly_bounds(&self.ct0is, &bounds, &p);
+        let ct1is_invalid = check_poly_bounds(&self.ct1is, &bounds, &p);
+
+        // Collect all errors
+        let mut error_messages = Vec::new();
+
+        if !pk0i_invalid.is_empty() {
+            error_messages.push(format!(
+                "Invalid pk0i values at {:?}",
+                pk0i_invalid
+            ));
+        }
+        if !pk1i_invalid.is_empty() {
+            error_messages.push(format!(
+                "Invalid pk1i values at {:?}",
+                pk1i_invalid
+            ));
+        }
+        if !ct0is_invalid.is_empty() {
+            error_messages.push(format!(
+                "Invalid ct0is values at {:?}",
+                ct0is_invalid
+            ));
+        }
+        if !ct1is_invalid.is_empty() {
+            error_messages.push(format!(
+                "Invalid ct1is values at {:?}",
+                ct1is_invalid
+            ));
+        }
+
+        // If there are errors, panic with detailed message
+        if !error_messages.is_empty() {
+            panic!("{}", error_messages.join(" | "));
+        }
+    }
+}
+
 impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     type FirstPhasePayload = Payload<F>;
 
     /// #### Phase 0
 
-    /// In this phase, the polynomials for each matrix $S_i$ are assigned to the circuit. Namely:
-    /// * polynomials `u`,'e1, `e0`, `k1`, `pk0i`,`pk1_q1` are assigned to the witness table. This has to be done only once as these polynomial are common to each $S_i$ matrix
-    /// * polynomials `r1i`, `r2i`,`p1i`,`p2i` are assigned to the witness table for each $S_i$ matrix
-    /// * polynomials 'ct0is' and 'ct1is` are assigned to the witness table for each $Ct_i$
+    /// In this phase, the polynomials for each matrix $S^j_i$ are assigned to the circuit (j from 0 to 1 refering to two equations, one for ct0 and one for ct1. i from 0 to l-1, where l is the number of qi's). Namely:
+    /// * polynomials `u`,'e1, `e0`, `k1` are assigned to the witness table. This has to be done only once as these polynomial are common to each $S_i$ matrix
+    /// * polynomials `r1i`, `r2i` are assigned to the witness table for each $S^0_i$ matrix
+    /// * polynomial 'ct0is', `pk0i` are assigned to the witness table for each $S^0_i$ matrix and exposed as public inputs 
+    /// * polynomials `p1i`,`p2i` are assigned to the witness table for each $S^1_i$ matrix
+    /// * polynomials 'ct1is`,`pk1i are assigned to the witness table for each $S^1_i$ matrix and exposed as public inputs 
 
     /// Witness values are element of the finite field $\mod{p}$. Negative coefficients $-z$ are assigned as field elements $p - z$.
 
@@ -236,31 +333,33 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
     /// In this phase, the following two core constraints are enforced:
 
-    /// - The coefficients of $S_i$ are in the expected range.
-    /// - $P_i(\gamma) \times S_i(\gamma) =Ct_{0,i}(\gamma)$
+    /// - The coefficients of $S^j_i$ are in the expected range.
+    /// - $U^j_i(\gamma) \times S^j_i(\gamma) =Ct_{j,i}(\gamma)$
 
     /// ##### Range Check
 
-    /// The coefficients of the private polynomials from each $i$-th matrix $S_i$ are checked to be in the correct range
-    /// * Range check polynomials `u`, `e0`,`e1`,`k1`. This has to be done only once as these polynomial are common to each $S_i$ matrix
-    /// * Range check polynomials `r1i`, `r2i` for each $S_i$ matrix
-    /// * Range check polynomials `p1i`, `p2i` for each $S_i$ matrix
-    /// * Range check polynomials `pk0`, `pk1` for each $U_i$ matrix
+    /// The coefficients of the private polynomials from each $i$-th matrix $S^j_i$ are checked to be in the correct range
+    /// * Range check polynomials `u`, `e0`,`e1`,`k1`. This has to be done only once as these polynomial are common to each $S^j_i$ matrix
+    /// * Range check polynomials `r1i`, `r2i` for each $S^0_i$ matrix
+    /// * Range check polynomials `p1i`, `p2i` for each $S^1_i$ matrix
 
     /// Since negative coefficients `-z` are assigned as `p - z` to the circuit, this might result in very large coefficients. Performing the range check on such large coefficients requires large lookup tables. To avoid this, the coefficients (both negative and positive) are shifted by a constant to make them positive and then perform the range check.
 
     /// ##### Evaluation at $\gamma$ Constraint
 
     /// * Constrain the evaluation of the polynomials `u`, `e0`, `e1`, `k1` at $\gamma$. This has to be done only once as these polynomial are common to each $S_i$ matrix
-    /// * Constrain the evaluation of the polynomials `r1i`, `r2i` at $\gamma$ for each $S_i$ matrix
-    /// * Constrain the evaluation of the polynomials `p1i`, `p2i` at $\gamma$ for each $S_i$ matrix
+    /// * Constrain the evaluation of the polynomials `r1i`, `r2i` at $\gamma$ for each $S^0_i$ matrix
+    /// * Constrain the evaluation of the polynomials `p1i`, `p2i` at $\gamma$ for each $S^1_i$ matrix
+    /// Constrain the evaluation of the polynomials `pk0i`, `ct0i` at $\gamma$ for each $U^0_i$ matrix
+    /// Constrain the evaluation of the polynomials `pk1i`, `ct1i` at $\gamma$ for each $U^1_i$ matrix
+    /// * Constrain the evaluation of the polynomials `cyclo` at $\gamma$ . This has to be done only once as the cyclotomic polynomial is common to each $U_i$ matrix
 
     /// ##### Correct Encryption Constraint
 
-    /// It is needed to prove that $P_i(\gamma) \times S_i(\gamma) =Ct_{0,i}(\gamma)$. This can be rewritten as `ct0i = ct0i_hat + r1i * qi + r2i * cyclo`, where `ct0i_hat = pk0i * u + e0 + k1 * k0i`.
+    /// It is needed to prove that $U^j_i(\gamma) \times S^j_i(\gamma) =Ct_{j,i}(\gamma)$. This can be rewritten as (for the case of j = 0 for instance) `ct0i = ct0i_hat + r1i * qi + r2i * cyclo`, where `ct0i_hat = pk0i * u + e0 + k1 * k0i`.
 
     /// This constrained is enforced by proving that `LHS(gamma) = RHS(gamma)`. According to the Schwartz-Zippel lemma, if this relation between polynomial when evaluated at a random point holds true, then then the polynomials are identical with high probability. Note that `qi` and `k0i` (for each $U_i$ matrix) are constants to the circuit encoded during key generation.
-    /// * Constrain that `ct0i(gamma) = ai(gamma) * s(gamma) + e(gamma) + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)` for each $i$-th CRT basis
+    /// * Constrain that `ct0i(gamma) = pk0i(gamma) * u(gamma) + e0(gamma) + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)` for each $i$-th CRT basis
     ///
 
     fn virtual_assign_phase1(
@@ -503,7 +602,11 @@ mod test {
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
         // 6. Verify the proof
+
+        pk_enc_circuit.check_polynomial_bounds();
         check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+
+
     }
 
     #[test]
@@ -565,6 +668,8 @@ mod test {
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
         // 6. Verify the proof
+
+        pk_enc_circuit.check_polynomial_bounds();
         check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
     }
 
@@ -1000,6 +1105,7 @@ mod test {
 
             // 5. Verify the proof
             let timer = std::time::Instant::now();
+            pk_enc_circuit.check_polynomial_bounds();
             check_proof_with_instances(&config.kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
             let proof_verification_time = timer.elapsed();
 

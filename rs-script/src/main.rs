@@ -182,6 +182,7 @@ impl InputValidationVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
     ) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
+
         // Get context, plaintext modulus, and degree
         let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
@@ -298,6 +299,7 @@ impl InputValidationVectors {
         println!("e0 = {:?}\n", &e0);
         println!("e1 = {:?}\n", &e1);
          */
+
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
@@ -588,8 +590,8 @@ impl InputValidationBounds {
 
             // constraint. The coefficients of (ct0i - ct0i_hat - r2i * cyclo) / qi = r1i should be in the range
             // $[
-            //      \frac{ \frac{-(t - 1)}{2} \cdot |K_{0,i}| - ((N+2) \cdot \frac{q_i - 1}{2} + B )}{q_i},
-            //      \frac{ \frac{t - 1}{2} \cdot |K_{0,i}| +  (N+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
+            //      \frac{ \frac{-(t - 1)}{2} \cdot |K_{0,i}| - ((N \cdot B +2) \cdot \frac{q_i - 1}{2} + B )}{q_i},
+            //      \frac{ \frac{t - 1}{2} \cdot |K_{0,i}| +  (N \cdot B+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
             // ]$
             assert!(range_check_centered(
                 &vecs.r1is[i],
@@ -608,8 +610,8 @@ impl InputValidationBounds {
 
             // constraint. The coefficients of (ct0i - ct0i_hat - p2i * cyclo) / qi = p1i should be in the range
             // $[
-            //      \frac{- ((N+2) \cdot \frac{q_i - 1}{2} + B)}{q_i},
-            //      \frac{   (N+2) \cdot \frac{q_i - 1}{2} + B }{q_i}
+            //      \frac{- ((N \cdot B +2) \cdot \frac{q_i - 1}{2} + B)}{q_i},
+            //      \frac{   (N \cdot B +2) \cdot \frac{q_i - 1}{2} + B }{q_i}
             // ]$
             assert!(range_check_centered(
                 &vecs.p1is[i],
@@ -654,6 +656,7 @@ impl InputValidationBounds {
         //where the plaintext modulus is even, the lower bound cannot be calculated by just
         //negating the upper bound. For instance, if t = 8, then the lower bound will be -4 and the
         //upper bound will be 3
+        //
         let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
         let ptxt_low_bound = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
            (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
@@ -685,13 +688,14 @@ impl InputValidationBounds {
             pk_bounds[i] = qi_bound.clone();
             r2_bounds[i] = qi_bound.clone();
 
-            r1_low_bounds[i] = (&ptxt_low_bound * BigInt::abs(&k0qi) -&((&N + 2) * &qi_bound + &gauss_bound))
+            r1_low_bounds[i] = (&ptxt_low_bound * BigInt::abs(&k0qi) -&((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
-            r1_up_bounds[i] = (&ptxt_up_bound * BigInt::abs(&k0qi) + ((&N + 2) * &qi_bound + &gauss_bound))
+            r1_up_bounds[i] = (&ptxt_up_bound * BigInt::abs(&k0qi) + ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
 
             p2_bounds[i] = qi_bound.clone();
-            p1_bounds[i] = ((&N + 2) * &qi_bound + &gauss_bound) / &qi_bigint;
+            p1_bounds[i] = ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound) / &qi_bigint;
+
         }
 
         Ok(InputValidationBounds {
@@ -764,12 +768,10 @@ impl InputValidationBounds {
             pk_bound_str
         )?;
 
-        writeln!(file, "/// The coefficients of the polynomial `pk1is` should exist in the interval `[-PK0_BOUND, PK0_BOUND]`.")?;
-
         writeln!(file, "/// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with 𝜎 = 3.2.")?;
         writeln!(file, "pub const E_BOUND: u64 = {};", self.e)?;
 
-        writeln!(file, "/// The coefficients of the polynomial `s` should exist in the interval `[-S_BOUND, S_BOUND]`.")?;
+        writeln!(file, "/// The coefficients of the polynomial `u` should exist in the interval `[-S_BOUND, S_BOUND]`.")?;
         writeln!(file, "pub const U_BOUND: u64 = {};", self.u)?;
 
         let r1_low_bounds_str = self
@@ -785,7 +787,7 @@ impl InputValidationBounds {
             .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        writeln!(file, "/// The coefficients of the polynomials `r1is` should exist in the interval `[R1_LOW_BOUNDS[i], R1_UP_BOUNDS[i]]` where R1_LOW_BOUNDS is equal to $\\frac{{\\frac{{-(t - 1)}}{{2}} \\cdot |K_{{0,i}}| - (N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` and `R1_UP_BOUNDS[i]` is equal to `$\\frac{{\\frac{{(t - 1)}}{{2}} \\cdot |K_{{0,i}}| + (N+2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` .")?;
+        writeln!(file, "/// The coefficients of the polynomials `r1is` should exist in the interval `[R1_LOW_BOUNDS[i], R1_UP_BOUNDS[i]]` where R1_LOW_BOUNDS is equal to $\\frac{{\\frac{{-(t - 1)}}{{2}} \\cdot |K_{{0,i}}| - (N \\cdot B +2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` and `R1_UP_BOUNDS[i]` is equal to `$\\frac{{\\frac{{(t - 1)}}{{2}} \\cdot |K_{{0,i}}| + (N \\cdot +2) \\cdot \\frac{{q_i - 1}}{{2}} + B}}{{q_i}}` .")?;
         writeln!(
             file,
             "pub const R1_LOW_BOUNDS: [i64; {}] = [{}];",
@@ -820,7 +822,7 @@ impl InputValidationBounds {
             .map(|x| x.to_string())
             .collect::<Vec<String>>()
             .join(", ");
-        writeln!(file, "/// The coefficients of the polynomials `p1is` should exist in the interval `[-P1_BOUND[i], P1_BOUND[i]]` where `P1_BOUND[i]` is equal to (((qis[i] - 1) / 2) * (n + 2) + b ) / qis[i].")?;
+        writeln!(file, "/// The coefficients of the polynomials `p1is` should exist in the interval `[-P1_BOUND[i], P1_BOUND[i]]` where `P1_BOUND[i]` is equal to (((qis[i] - 1) / 2) * (N \\cdot B + 2) + B ) / qis[i].")?;
         writeln!(
             file,
             "pub const P1_BOUNDS: [u64; {}] = [{}];",
@@ -882,29 +884,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let N: u64 = 1024;
 
-    //let plaintext_modulus: u64 = 65537;
-    let plaintext_modulus: u64 = 2048;
+    let plaintext_modulus: u64 = 65537;
+    //let plaintext_modulus: u64 = 2048;
 
-   // let moduli: Vec<u64> = vec![
-   //   1152921504606584833,
-   //   1152921504598720513,
-   //   1152921504597016577,
-   //   1152921504595968001,
-   //   1152921504595640321,
-   //   1152921504593412097,
-   //   1152921504592822273,
-   //   1152921504592429057,
-   //   1152921504589938689,
-   //   1152921504586530817,
-   //   1152921504585547777,
-   //   1152921504583647233,
-   //   1152921504581877761,
-   //   1152921504581419009,
-   //   1152921504580894721
-   // ];
+    let moduli: Vec<u64> = vec![
+      1152921504606584833,
+      1152921504598720513,
+      1152921504597016577,
+      1152921504595968001,
+      1152921504595640321,
+      1152921504593412097,
+      1152921504592822273,
+      1152921504592429057,
+      1152921504589938689,
+      1152921504586530817,
+      1152921504585547777,
+      1152921504583647233,
+      1152921504581877761,
+      1152921504581419009,
+      1152921504580894721
+    ];
 
     //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
-    let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
+    //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![1038337,18014398492704769,4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![1038337];
     //let moduli: Vec<u64> = vec![
@@ -928,6 +930,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Generate the secret and public keys
     let sk = SecretKey::random(&params, &mut rng);
+
+
     let pk = PublicKey::new(&sk, &mut rng);
 
     //Sample a message and encrypt
