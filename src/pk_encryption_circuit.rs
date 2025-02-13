@@ -16,7 +16,7 @@ use num_traits::{One, Zero};
 use std::str::FromStr;
 
 use crate::{
-    constants::pk_enc_constants::pk_enc_constants_2048_1x52_1032193::{
+    constants::pk_enc_constants::pk_enc_constants_1024_2x52_2048::{
         //constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
         E_BOUND,
         K0IS,
@@ -682,7 +682,7 @@ mod test {
         // (A) Generate a proof & verify it locally
         // --------------------------------------------------
         // Zero file for keygen circuit sizing
-        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(1, 2048);
+        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(2, 1024);
 
         let k = 15;
         let kzg_params = gen_srs(k);
@@ -707,7 +707,7 @@ mod test {
         drop(rlc_circuit_for_keygen);
 
         // Load the real data from JSON
-        let file_path = "src/data/pk_enc_data/pk_enc_2048_1x52_1032193.json";
+        let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
         let pk_enc_circuit: BfvPkEncryptionCircuit =
             serde_json::from_reader(File::open(file_path).unwrap()).unwrap();
         let instances: Vec<Vec<Fr>> = pk_enc_circuit.instances();
@@ -797,6 +797,7 @@ mod test {
         assert_eq!(output.last(), Some(&1u8), "EVM returned 'false'");
         println!("EVM verification success with gas cost = {gas_cost}");
     }
+
     // #[test]
     // pub fn test_pk_enc_invalid_range() {
     //     // 1. Define the inputs of the circuit
