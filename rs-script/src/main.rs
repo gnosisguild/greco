@@ -182,7 +182,6 @@ impl InputValidationVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
     ) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
-
         // Get context, plaintext modulus, and degree
         let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
@@ -208,24 +207,15 @@ impl InputValidationVectors {
         u_rns_copy.change_representation(Representation::PowerBasis);
         e0_rns_copy.change_representation(Representation::PowerBasis);
         e1_rns_copy.change_representation(Representation::PowerBasis);
-        
 
+        // let mut u: Vec<BigInt> =
+        //     u_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
 
-          
-       // let mut u: Vec<BigInt> =
-       //     u_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
+        // let mut e0: Vec<BigInt> =
+        //     e0_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
 
-
-       // let mut e0: Vec<BigInt> =
-       //     e0_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
-
-       // let mut e1: Vec<BigInt> =
-       //     e1_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
-
-
-
+        // let mut e1: Vec<BigInt> =
+        //     e1_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
 
         let u: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
@@ -290,7 +280,6 @@ impl InputValidationVectors {
         cyclo[0] = BigInt::from(1u64); // x^N term
         cyclo[N as usize] = BigInt::from(1u64); // x^0 term
 
-
         // Print
         /*
         println!("m = {:?}\n", &m);
@@ -299,7 +288,6 @@ impl InputValidationVectors {
         println!("e0 = {:?}\n", &e0);
         println!("e1 = {:?}\n", &e1);
          */
-
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
@@ -341,7 +329,6 @@ impl InputValidationVectors {
                     pk1_coeffs.iter().rev().map(|&x| BigInt::from(x)).collect();
 
                 let qi_bigint = BigInt::from(qi.modulus());
-
 
                 reduce_and_center_coefficients_mut(&mut ct0i, &qi_bigint);
                 reduce_and_center_coefficients_mut(&mut ct1i, &qi_bigint);
@@ -550,7 +537,12 @@ impl InputValidationBounds {
         // constraint. The coefficients of k1 should be in the range [-(t-1)]/2, (t-1)/2]
 
         assert!(range_check_centered(&vecs.k1, &self.k1_low, &self.k1_up));
-        assert!(range_check_standard_2bounds(&vecs_std.k1, &self.k1_low, &self.k1_up, &p));
+        assert!(range_check_standard_2bounds(
+            &vecs_std.k1,
+            &self.k1_low,
+            &self.k1_up,
+            &p
+        ));
 
         // Perform asserts for polynomials depending on each qi
         for i in 0..self.r2.len() {
@@ -598,7 +590,12 @@ impl InputValidationBounds {
                 &self.r1_low[i],
                 &self.r1_up[i]
             ));
-            assert!(range_check_standard_2bounds(&vecs_std.r1is[i], &self.r1_low[i], &self.r1_up[i], &p));
+            assert!(range_check_standard_2bounds(
+                &vecs_std.r1is[i],
+                &self.r1_low[i],
+                &self.r1_up[i],
+                &p
+            ));
 
             // constraint. The coefficients of p2 should be in the range [-(qi-1)/2, (qi-1)/2]
             assert!(range_check_centered(
@@ -651,7 +648,7 @@ impl InputValidationBounds {
         );
         let u_bound = gauss_bound.clone();
         let e_bound = gauss_bound.clone();
-        
+
         //Note we have two different variables for lower bound and upper bound, as in the case
         //where the plaintext modulus is even, the lower bound cannot be calculated by just
         //negating the upper bound. For instance, if t = 8, then the lower bound will be -4 and the
@@ -659,7 +656,7 @@ impl InputValidationBounds {
         //
         let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
         let ptxt_low_bound = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
-           (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
+            (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
         } else {
             ((-&(t.clone() - BigInt::from(1))) / BigInt::from(2)) - BigInt::from(1)
         };
@@ -688,14 +685,15 @@ impl InputValidationBounds {
             pk_bounds[i] = qi_bound.clone();
             r2_bounds[i] = qi_bound.clone();
 
-            r1_low_bounds[i] = (&ptxt_low_bound * BigInt::abs(&k0qi) -&((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
+            r1_low_bounds[i] = (&ptxt_low_bound * BigInt::abs(&k0qi)
+                - &((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
-            r1_up_bounds[i] = (&ptxt_up_bound * BigInt::abs(&k0qi) + ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
+            r1_up_bounds[i] = (&ptxt_up_bound * BigInt::abs(&k0qi)
+                + ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
 
             p2_bounds[i] = qi_bound.clone();
             p1_bounds[i] = ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound) / &qi_bigint;
-
         }
 
         Ok(InputValidationBounds {
@@ -794,13 +792,12 @@ impl InputValidationBounds {
             self.r1_low.len(),
             r1_low_bounds_str
         )?;
-         writeln!(
+        writeln!(
             file,
             "pub const R1_UP_BOUNDS: [u64; {}] = [{}];",
             self.r1_up.len(),
             r1_up_bounds_str
         )?;
-
 
         let r2_bounds_str = self
             .r2
@@ -887,31 +884,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let plaintext_modulus: u64 = 65537;
     let plaintext_modulus: u64 = 2048;
 
-   // let moduli: Vec<u64> = vec![
-   //   1152921504606584833,
-   //   1152921504598720513,
-   //   1152921504597016577,
-   //   1152921504595968001,
-   //   1152921504595640321,
-   //   1152921504593412097,
-   //   1152921504592822273,
-   //   1152921504592429057,
-   //   1152921504589938689,
-   //   1152921504586530817,
-   //   1152921504585547777,
-   //   1152921504583647233,
-   //   1152921504581877761,
-   //   1152921504581419009,
-   //   1152921504580894721
-   // ];
+    // let moduli: Vec<u64> = vec![
+    //   1152921504606584833,
+    //   1152921504598720513,
+    //   1152921504597016577,
+    //   1152921504595968001,
+    //   1152921504595640321,
+    //   1152921504593412097,
+    //   1152921504592822273,
+    //   1152921504592429057,
+    //   1152921504589938689,
+    //   1152921504586530817,
+    //   1152921504585547777,
+    //   1152921504583647233,
+    //   1152921504581877761,
+    //   1152921504581419009,
+    //   1152921504580894721
+    // ];
 
     let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![1038337,18014398492704769,4503599625535489, 4503599626321921];
     //let moduli: Vec<u64> = vec![1038337];
     //let moduli: Vec<u64> = vec![
-        //18014398492704769
-//];
+    //18014398492704769
+    //];
 
     //let moduli_sizes = [20];
 
@@ -931,7 +928,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Generate the secret and public keys
     let sk = SecretKey::random(&params, &mut rng);
 
-
     let pk = PublicKey::new(&sk, &mut rng);
 
     //Sample a message and encrypt
@@ -942,11 +938,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Extract context
     let ctx = params.ctx_at_level(pt.level())?.clone();
     let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
-    
+
     // Sanity check. m = Decrypt(ct)
 
     //let m_decrypted = unsafe { t.center_vec_vt(&sk.try_decrypt(&ct)?.value.into_vec()) };
-    let m_decrypted = sk.try_decrypt(&ct)?.value.into_vec() ;
+    let m_decrypted = sk.try_decrypt(&ct)?.value.into_vec();
     assert_eq!(m_decrypted, m);
 
     let moduli = ctx.moduli();
@@ -967,7 +963,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Check the constraints
     bounds.check_constraints(&res, &p);
-
 
     let moduli_bitsize = {
         if let Some(&max_value) = ctx.moduli().iter().max() {
@@ -1011,8 +1006,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     bounds.to_file(&params, &filename_constants)?;
 
     Ok(())
-
-    }
+}
 
 fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
     poly.iter().map(|coef| coef.to_string()).collect()

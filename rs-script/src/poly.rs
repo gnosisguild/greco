@@ -235,8 +235,8 @@ pub fn reduce_and_center(x: &BigInt, modulus: &BigInt, half_modulus: &BigInt) ->
         if r > *half_modulus {
             r -= modulus;
         }
-    }
-    else if r >= *half_modulus {                                                                                                                                 r -= modulus; 
+    } else if r >= *half_modulus {
+        r -= modulus;
     }
 
     r
@@ -340,7 +340,12 @@ pub fn range_check_centered(vec: &[BigInt], lower_bound: &BigInt, upper_bound: &
         .all(|coeff| coeff >= lower_bound && coeff <= upper_bound)
 }
 
-pub fn range_check_standard_2bounds(vec: &[BigInt], low_bound: &BigInt, up_bound: &BigInt, modulus: &BigInt) -> bool {
+pub fn range_check_standard_2bounds(
+    vec: &[BigInt],
+    low_bound: &BigInt,
+    up_bound: &BigInt,
+    modulus: &BigInt,
+) -> bool {
     vec.iter().all(|coeff| {
         (coeff >= &BigInt::from(0) && coeff <= up_bound)
             || (coeff >= &(modulus + low_bound) && coeff < modulus)

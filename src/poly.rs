@@ -1,10 +1,10 @@
-use axiom_eth::rlc::chip::RlcChip;
 use axiom_eth::halo2_base::{
     gates::{GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
     AssignedValue, Context,
     QuantumCell::Constant,
 };
+use axiom_eth::rlc::chip::RlcChip;
 /// Struct to store the coefficients of a polynomial as Field Elements
 /// The coefficients are stored starting from the highest degree term
 #[derive(Clone, Debug)]
@@ -46,18 +46,27 @@ impl<F: ScalarField> PolyAssigned<F> {
     }
 
     /// Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2*upper_bound]`.
-    pub fn range_check_1bound(&self, ctx_gate: &mut Context<F>, range: &RangeChip<F>, upper_bound: u64) {
+    pub fn range_check_1bound(
+        &self,
+        ctx_gate: &mut Context<F>,
+        range: &RangeChip<F>,
+        upper_bound: u64,
+    ) {
         let bound_constant = Constant(F::from(upper_bound));
         for coeff in &self.assigned_coefficients {
             let shifted_coeff = range.gate().add(ctx_gate, *coeff, bound_constant);
             range.check_less_than_safe(ctx_gate, shifted_coeff, (2 * upper_bound) + 1);
-
         }
     }
 
-
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
-    pub fn range_check_2bounds(&self, ctx_gate: &mut Context<F>, range: &RangeChip<F>, lower_bound: i64, upper_bound: u64) {
+    pub fn range_check_2bounds(
+        &self,
+        ctx_gate: &mut Context<F>,
+        range: &RangeChip<F>,
+        lower_bound: i64,
+        upper_bound: u64,
+    ) {
         let value_shift = -&lower_bound as u64;
         let bound_constant = Constant(F::from(value_shift));
 
