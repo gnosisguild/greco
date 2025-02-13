@@ -108,7 +108,42 @@ impl BfvPkEncryptionCircuit {
         //Note we are using PK_BOUND for all polynomials we are checking, as all these polynomials
         //have the same bounds.
         let bounds: Vec<BigInt> = PK_BOUND.iter().map(|&b| BigInt::from(b)).collect(); // Convert PK_BOUND to BigInt
-        let two = BigInt::from(2);
+        let expected_length = bounds.len();
+
+        // Ensure all polynomials have the same number of rows as PK_BOUND
+        if self.pk0i.len() != expected_length
+            || self.pk1i.len() != expected_length
+            || self.ct0is.len() != expected_length
+            || self.ct1is.len() != expected_length
+        {
+            panic!(
+                "Mismatch in polynomial row counts: Expected {}, but got pk0i={}, pk1i={}, ct0is={}, ct1is={}",
+                expected_length,
+                self.pk0i.len(),
+                self.pk1i.len(),
+                self.ct0is.len(),
+                self.ct1is.len()
+            );
+        }
+
+        let polynomials = [
+            ("pk0i", &self.pk0i),
+            ("pk1i", &self.pk1i),
+            ("ct0is", &self.ct0is),
+            ("ct1is", &self.ct1is),
+        ];
+
+        for (name, poly) in polynomials.iter() {
+            for (row_idx, row) in poly.iter().enumerate() {
+                if row.len() != N {
+                    panic!(
+                        "Row size mismatch in {}: Expected {}, but row {} has size {}",
+                        name, N, row_idx, row.len()
+                    );
+                }
+            }
+        }
+
 
         fn is_in_bound(value: &str, bound: &BigInt, p: &BigInt) -> bool {
             if let Ok(num) = BigInt::from_str(value) {
@@ -544,8 +579,6 @@ mod test {
     #[cfg(feature = "bench")]
     use prettytable::{row, Table};
 
-
-    //use crate::constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::R1_LOW_BOUNDS;
 
     use super::{test_params, BfvPkEncryptionCircuit};
 
