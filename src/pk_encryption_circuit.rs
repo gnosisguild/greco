@@ -1,31 +1,39 @@
 use core::assert;
 
-use axiom_eth::rlc::{
-    chip::RlcChip,
-    circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
-};
-use halo2_base::{
+use axiom_eth::halo2_base::{
     gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
     QuantumCell::Constant,
 };
+use axiom_eth::rlc::{
+    chip::RlcChip,
+    circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
+};
 use serde::Deserialize;
 
 use num_bigint::BigInt;
-use num_traits::{Zero, One};
+use num_traits::{One, Zero};
 use std::str::FromStr;
 
 use crate::{
-
-
-    constants::pk_enc_constants::pk_enc_constants_1024_2x52_2048::{
-    //constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
-        E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS, R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS,
+    constants::pk_enc_constants::pk_enc_constants_2048_1x52_1032193::{
+        //constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::{
+        E_BOUND,
+        K0IS,
+        K1_LOW_BOUND,
+        K1_UP_BOUND,
+        N,
+        P1_BOUNDS,
+        P2_BOUNDS,
+        PK_BOUND,
+        QIS,
+        R1_LOW_BOUNDS,
+        R1_UP_BOUNDS,
+        R2_BOUNDS,
         U_BOUND,
     },
     poly::{Poly, PolyAssigned},
 };
-
 
 /// Helper function to define the parameters of the RlcCircuit. This is a non-optimized configuration that makes use of a single advice column. Use this for testing purposes only.
 pub fn test_params() -> RlcCircuitParams {
@@ -75,6 +83,27 @@ pub struct BfvPkEncryptionCircuit {
     ct1is: Vec<Vec<String>>,
 }
 
+impl BfvPkEncryptionCircuit {
+    pub fn create_empty_circuit(num_moduli: usize, degree: usize) -> Self {
+        let zero_str = String::from("0");
+
+        BfvPkEncryptionCircuit {
+            pk0i: vec![vec![zero_str.clone(); degree]; num_moduli],
+            pk1i: vec![vec![zero_str.clone(); degree]; num_moduli],
+            ct0is: vec![vec![zero_str.clone(); degree]; num_moduli],
+            ct1is: vec![vec![zero_str.clone(); degree]; num_moduli],
+            r1is: vec![vec![zero_str.clone(); 2 * (degree - 1) + 1]; num_moduli],
+            r2is: vec![vec![zero_str.clone(); degree - 1]; num_moduli],
+            p1is: vec![vec![zero_str.clone(); 2 * (degree - 1) + 1]; num_moduli],
+            p2is: vec![vec![zero_str.clone(); degree - 1]; num_moduli],
+            u: vec![zero_str.clone(); degree],
+            e0: vec![zero_str.clone(); degree],
+            e1: vec![zero_str.clone(); degree],
+            k1: vec![zero_str.clone(); degree],
+        }
+    }
+}
+
 /// Payload returned by the first phase of the circuit to be reused in the second phase
 pub struct Payload<F: ScalarField> {
     pk0i_assigned: Vec<PolyAssigned<F>>,
@@ -92,10 +121,9 @@ pub struct Payload<F: ScalarField> {
 }
 
 impl BfvPkEncryptionCircuit {
-    
-/// Helper functions added for checking if the public polynomials (Ct0i, Ct1i, Pk0i, Pk1i) are of the right degree. Also for checking if the coefficients of these polynomials are within the right bounds. Note these checks are necessary for the zkp to be valid. That is, it is true that we can always reduce these polynomials so as to be in R_qi, and hence have the right degree and the coefficients in the right bounds, but accepting polynomials that are not already in R_qi will allow an attacker to forge a valid proof for an invalid ciphertext, exploiting the fact that the equations checked with the zkp live in Z_p and not Z_qi. 
-///
-///Note as well that the values K0,i have to be the right ones (negation of the inverse of t modulu qi), but we assume that these are calculated by the verifier and not retrieved from the prover, hence no check is performed. For instance, if we have an evm verifier, then this verifier can for instance calculate them himself or retrieve them from the blockchain if these are published.
+    /// Helper functions added for checking if the public polynomials (Ct0i, Ct1i, Pk0i, Pk1i) are of the right degree. Also for checking if the coefficients of these polynomials are within the right bounds. Note these checks are necessary for the zkp to be valid. That is, it is true that we can always reduce these polynomials so as to be in R_qi, and hence have the right degree and the coefficients in the right bounds, but accepting polynomials that are not already in R_qi will allow an attacker to forge a valid proof for an invalid ciphertext, exploiting the fact that the equations checked with the zkp live in Z_p and not Z_qi.
+    ///
+    ///Note as well that the values K0,i have to be the right ones (negation of the inverse of t modulu qi), but we assume that these are calculated by the verifier and not retrieved from the prover, hence no check is performed. For instance, if we have an evm verifier, then this verifier can for instance calculate them himself or retrieve them from the blockchain if these are published.
 
     pub fn check_polynomial_bounds(&self) {
         //Note we are hardwiring the prime field of the snark in here. There should be a cleaner
@@ -104,7 +132,7 @@ impl BfvPkEncryptionCircuit {
             "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         )
         .expect("Invalid prime number p");
-        
+
         //Note we are using PK_BOUND for all polynomials we are checking, as all these polynomials
         //have the same bounds.
         let bounds: Vec<BigInt> = PK_BOUND.iter().map(|&b| BigInt::from(b)).collect(); // Convert PK_BOUND to BigInt
@@ -138,24 +166,31 @@ impl BfvPkEncryptionCircuit {
                 if row.len() != N {
                     panic!(
                         "Row size mismatch in {}: Expected {}, but row {} has size {}",
-                        name, N, row_idx, row.len()
+                        name,
+                        N,
+                        row_idx,
+                        row.len()
                     );
                 }
             }
         }
 
-
         fn is_in_bound(value: &str, bound: &BigInt, p: &BigInt) -> bool {
             if let Ok(num) = BigInt::from_str(value) {
                 let adjusted = (num + bound) % p; // Apply transformation
-                adjusted >= BigInt::zero() && adjusted <= (bound * &BigInt::from(2)) // Check [0, 2*PK_BOUND]
+                adjusted >= BigInt::zero() && adjusted <= (bound * &BigInt::from(2))
+            // Check [0, 2*PK_BOUND]
             } else {
                 false // If parsing fails, consider it invalid
             }
         }
 
         // Helper function to check polynomial bounds per row
-        fn check_poly_bounds(poly: &Vec<Vec<String>>, bounds: &[BigInt], p: &BigInt) -> Vec<(usize, usize, String)> {
+        fn check_poly_bounds(
+            poly: &Vec<Vec<String>>,
+            bounds: &[BigInt],
+            p: &BigInt,
+        ) -> Vec<(usize, usize, String)> {
             poly.iter()
                 .enumerate()
                 .flat_map(|(row, row_values)| {
@@ -163,7 +198,8 @@ impl BfvPkEncryptionCircuit {
                         return vec![]; // Avoid out-of-bounds indexing for PK_BOUND
                     }
                     let bound = &bounds[row];
-                    row_values.iter()
+                    row_values
+                        .iter()
                         .enumerate()
                         .filter_map(|(col, value)| {
                             if !is_in_bound(value, bound, p) {
@@ -187,28 +223,16 @@ impl BfvPkEncryptionCircuit {
         let mut error_messages = Vec::new();
 
         if !pk0i_invalid.is_empty() {
-            error_messages.push(format!(
-                "Invalid pk0i values at {:?}",
-                pk0i_invalid
-            ));
+            error_messages.push(format!("Invalid pk0i values at {:?}", pk0i_invalid));
         }
         if !pk1i_invalid.is_empty() {
-            error_messages.push(format!(
-                "Invalid pk1i values at {:?}",
-                pk1i_invalid
-            ));
+            error_messages.push(format!("Invalid pk1i values at {:?}", pk1i_invalid));
         }
         if !ct0is_invalid.is_empty() {
-            error_messages.push(format!(
-                "Invalid ct0is values at {:?}",
-                ct0is_invalid
-            ));
+            error_messages.push(format!("Invalid ct0is values at {:?}", ct0is_invalid));
         }
         if !ct1is_invalid.is_empty() {
-            error_messages.push(format!(
-                "Invalid ct1is values at {:?}",
-                ct1is_invalid
-            ));
+            error_messages.push(format!("Invalid ct1is values at {:?}", ct1is_invalid));
         }
 
         // If there are errors, panic with detailed message
@@ -226,9 +250,9 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
     /// In this phase, the polynomials for each matrix $S^j_i$ are assigned to the circuit (j from 0 to 1 refering to two equations, one for ct0 and one for ct1. i from 0 to l-1, where l is the number of qi's). Namely:
     /// * polynomials `u`,'e1, `e0`, `k1` are assigned to the witness table. This has to be done only once as these polynomial are common to each $S_i$ matrix
     /// * polynomials `r1i`, `r2i` are assigned to the witness table for each $S^0_i$ matrix
-    /// * polynomial 'ct0is', `pk0i` are assigned to the witness table for each $S^0_i$ matrix and exposed as public inputs 
+    /// * polynomial 'ct0is', `pk0i` are assigned to the witness table for each $S^0_i$ matrix and exposed as public inputs
     /// * polynomials `p1i`,`p2i` are assigned to the witness table for each $S^1_i$ matrix
-    /// * polynomials 'ct1is`,`pk1i are assigned to the witness table for each $S^1_i$ matrix and exposed as public inputs 
+    /// * polynomials 'ct1is`,`pk1i are assigned to the witness table for each $S^1_i$ matrix and exposed as public inputs
 
     /// Witness values are element of the finite field $\mod{p}$. Negative coefficients $-z$ are assigned as field elements $p - z$.
 
@@ -462,7 +486,12 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 
         for z in 0..ct0is_assigned.len() {
             r2is_assigned[z].range_check_1bound(ctx_gate, range, R2_BOUNDS[z]);
-            r1is_assigned[z].range_check_2bounds(ctx_gate, range, R1_LOW_BOUNDS[z], R1_UP_BOUNDS[z]);
+            r1is_assigned[z].range_check_2bounds(
+                ctx_gate,
+                range,
+                R1_LOW_BOUNDS[z],
+                R1_UP_BOUNDS[z],
+            );
             p2is_assigned[z].range_check_1bound(ctx_gate, range, P2_BOUNDS[z]);
             p1is_assigned[z].range_check_1bound(ctx_gate, range, P1_BOUNDS[z]);
         }
@@ -550,41 +579,45 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
 }
 #[cfg(test)]
 mod test {
-    use std::{fs::File, io::Read};
+    use std::fs::File;
+    use std::io::Read;
+    use std::io::Write;
 
-    use axiom_eth::{
+    use axiom_eth::halo2_base::{
+        gates::circuit::CircuitBuilderStage,
         halo2_proofs::{
             dev::{FailureLocation, MockProver, VerifyFailure},
-            plonk::{keygen_pk, keygen_vk, Any, SecondPhase},
+            halo2curves::bn256::{Bn256, Fr},
+            plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Any, SecondPhase},
+            poly::kzg::{
+                commitment::ParamsKZG,
+                multiopen::{ProverSHPLONK, VerifierSHPLONK},
+                strategy::SingleStrategy,
+            },
+            transcript::TranscriptWriterBuffer,
         },
-        halo2curves::bn256::Fr,
-        rlc::{
-            circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions},
-            utils::executor::RlcExecutor,
-        },
-    };
-    use halo2_base::{
-        gates::circuit::CircuitBuilderStage,
         utils::{
             fs::gen_srs,
             testing::{check_proof_with_instances, gen_proof_with_instances},
         },
     };
+    use halo2_solidity_verifier::{
+        compile_solidity, encode_calldata, BatchOpenScheme::Bdfg21, Evm, Keccak256Transcript,
+        SolidityGenerator,
+    };
+    use rand::{rngs::OsRng, rngs::StdRng, RngCore, SeedableRng};
 
-    
-    #[cfg(feature = "bench")]
-    use axiom_eth::halo2curves::bn256::Bn256;
-    #[cfg(feature = "bench")]
-    use halo2_base::halo2_proofs::poly::kzg::commitment::ParamsKZG;
-    #[cfg(feature = "bench")]
-    use prettytable::{row, Table};
+    use axiom_eth::rlc::{
+        circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions},
+        utils::executor::RlcExecutor,
+    };
 
+    //use crate::constants::pk_enc_constants::pk_enc_constants_1024_15x60_65537::R1_LOW_BOUNDS;
 
     use super::{test_params, BfvPkEncryptionCircuit};
 
     #[test]
     fn test_pk_enc_valid() {
-
         let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
         //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
         let mut file = File::open(file_path_zeroes).unwrap();
@@ -620,7 +653,6 @@ mod test {
         proof_gen_builder.base.set_lookup_bits(k - 1);
         proof_gen_builder.base.set_instance_columns(1);
 
-
         let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
         //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let mut file = File::open(file_path).unwrap();
@@ -638,428 +670,543 @@ mod test {
         let instances = pk_enc_circuit.instances();
         let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
-
-
         // 6. Verify the proof. Note the first check is as well part of verifying the zkp
 
         pk_enc_circuit.check_polynomial_bounds();
         check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
-
-
     }
 
     #[test]
     pub fn test_pk_enc_full_prover() {
-        // 1. Define the inputs of the circuit.
-        // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
+        // --------------------------------------------------
+        // (A) Generate a proof & verify it locally
+        // --------------------------------------------------
+        // Zero file for keygen circuit sizing
+        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(1, 2048);
 
-        let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
-        //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
-        let mut file = File::open(file_path_zeroes).unwrap();
-        let mut data = String::new();
-        file.read_to_string(&mut data).unwrap();
-        let empty_pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+        let k = 15;
+        let kzg_params = gen_srs(k);
 
-        // 2. Generate (unsafe) trusted setup parameters
-        // Here we are setting a small k for optimization purposes
-        let k = 16;
-        let kzg_params = gen_srs(k as u32);
-
-        // 3. Build the circuit for key generation,
+        // Build an RLC circuit for KeyGen
         let mut key_gen_builder =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k);
-        key_gen_builder.base.set_lookup_bits(k - 1); // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
+            RlcCircuitBuilder::<Fr>::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k as usize);
+        key_gen_builder.base.set_lookup_bits((k - 1) as usize);
         key_gen_builder.base.set_instance_columns(1);
-        let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
 
-        // The parameters are auto configured by halo2 lib to fit all the columns into the `k`-sized table
-        let rlc_circuit_params = rlc_circuit.0.calculate_params(Some(9));
+        let rlc_circuit_for_keygen =
+            RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
+        let rlc_circuit_params = rlc_circuit_for_keygen.0.calculate_params(Some(9));
 
-        // 4. Generate the verification key and the proving key
-        let vk = keygen_vk(&kzg_params, &rlc_circuit).unwrap();
-        let pk = keygen_pk(&kzg_params, vk, &rlc_circuit).unwrap();
-        let break_points = rlc_circuit.0.builder.borrow().break_points();
-        drop(rlc_circuit);
+        // Keygen VerifyingKey / ProvingKey
+        let vk = keygen_vk(&kzg_params, &rlc_circuit_for_keygen).unwrap();
+        let pk = keygen_pk(&kzg_params, vk, &rlc_circuit_for_keygen).unwrap();
+        let actual_num_instance_columns = pk.get_vk().cs().num_instance_columns();
+        println!("VerifyingKey says num_instance_columns = {actual_num_instance_columns}");
 
-        // 5. Generate the proof, here we pass the actual inputs
-        let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
-            RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
-                .use_params(rlc_circuit_params);
-        proof_gen_builder.base.set_lookup_bits(k - 1);
-        proof_gen_builder.base.set_instance_columns(1);
+        let break_points = rlc_circuit_for_keygen.0.builder.borrow().break_points();
+        drop(rlc_circuit_for_keygen);
 
+        // Load the real data from JSON
+        let file_path = "src/data/pk_enc_data/pk_enc_2048_1x52_1032193.json";
+        let pk_enc_circuit: BfvPkEncryptionCircuit =
+            serde_json::from_reader(File::open(file_path).unwrap()).unwrap();
+        let instances: Vec<Vec<Fr>> = pk_enc_circuit.instances();
 
-        let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
-        //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
-        let mut file = File::open(file_path).unwrap();
-        let mut data = String::new();
-        file.read_to_string(&mut data).unwrap();
-        let pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
-        let instances = pk_enc_circuit.instances();
+        println!("instances.len() = {}", instances.len());
+        println!("instances[0].len() = {}", instances[0].len());
 
-        let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
+        // Build the RLC circuit for the real data
+        let mut builder = RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
+            .use_params(rlc_circuit_params.clone());
+        // lookup bits set to `k-1` as suggested [here](https://docs.axiom.xyz/protocol/zero-knowledge-proofs/getting-started-with-halo2#technical-detail-how-to-choose-lookup_bits)
+        builder.base.set_lookup_bits((k - 1) as usize);
+        builder.base.set_instance_columns(1);
 
-        rlc_circuit
+        let rlc_prover_circuit = RlcExecutor::new(builder, pk_enc_circuit.clone());
+        rlc_prover_circuit
             .0
             .builder
             .borrow_mut()
             .set_break_points(break_points);
-        let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
+        // Create a proof
+        let mut rng = StdRng::seed_from_u64(OsRng.next_u64());
+        let instance_refs = vec![instances[0].as_slice()];
 
-        // 6. Verify the proof. Note the first check is as well part of verifying the zkp
+        let proof = {
+            let mut transcript = Keccak256Transcript::new(Vec::new());
+            create_proof::<_, ProverSHPLONK<_>, _, _, _, _>(
+                &kzg_params,
+                &pk,
+                &[rlc_prover_circuit],
+                &[&instance_refs],
+                &mut rng,
+                &mut transcript,
+            )
+            .unwrap();
+            transcript.finalize()
+        };
 
-        pk_enc_circuit.check_polynomial_bounds();
-        check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+        println!("E2E proof size = {} bytes", proof.len());
+
+        // Verify it locally
+        let result = {
+            let mut transcript = Keccak256Transcript::new(proof.as_slice());
+            verify_proof::<_, VerifierSHPLONK<_>, _, _, SingleStrategy<_>>(
+                &kzg_params,
+                pk.get_vk(),
+                SingleStrategy::new(&kzg_params),
+                &[&instance_refs],
+                &mut transcript,
+            )
+        };
+        assert!(result.is_ok());
+        println!("Local verification succeeded!");
+
+        // --------------------------------------------------
+        // (B) Generate a Solidity verifier & test in an EVM
+        // --------------------------------------------------
+        let num_public_inputs = instances[0].len();
+
+        let generator = SolidityGenerator::new(&kzg_params, pk.get_vk(), Bdfg21, num_public_inputs);
+
+        // Render the Solidity code as a single contract
+        let verifier_solidity: String = generator.render().expect("render contract");
+
+        // Write it to a file
+        // let mut file = File::create("./contracts/BfvPKEncryptionVerifier.sol").unwrap();
+        // file.write_all(verifier_solidity.as_bytes()).unwrap();
+        // println!("Solidity verifier contract written to PKVerifier.sol");
+
+        // Compile it
+        let creation_code = compile_solidity(&verifier_solidity);
+        let code_size = creation_code.len();
+        println!("Verifier creation code size: {}", code_size);
+
+        // Deploy it to a local EVM
+        let mut evm = Evm::default();
+        let verifier_address = evm.create(creation_code);
+        println!("verifier_address = {:?}", verifier_address);
+
+        // Encode the calldata: we have None for "inlined" verifying key in the same contract
+        let calldata = encode_calldata(None, &proof, &instances[0]);
+
+        // Call the contract
+        let (gas_cost, output) = evm.call(verifier_address, calldata);
+
+        assert_eq!(output.last(), Some(&1u8), "EVM returned 'false'");
+        println!("EVM verification success with gas cost = {gas_cost}");
     }
 
-   // #[test]
-   // pub fn test_pk_enc_invalid_range() {
-   //     // 1. Define the inputs of the circuit
+    // #[test]
+    // pub fn test_pk_enc_full_prover() {
+    //     // 1. Define the inputs of the circuit.
+    //     // Since we are going to use this circuit instance for key gen, we can use an input file in which all the coefficients are set to 0
 
-   //     let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
-   //     let mut file = File::open(file_path).unwrap();
-   //     let mut data = String::new();
-   //     file.read_to_string(&mut data).unwrap();
-   //     let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
-   //     let instances = pk_enc_circuit.instances();
+        // let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_2x52_2048_zeroes.json";
+        // //let file_path_zeroes = "src/data/pk_enc_data/pk_enc_1024_15x60_65537_zeroes.json";
+        // let mut file = File::open(file_path_zeroes).unwrap();
+        // let mut data = String::new();
+        // file.read_to_string(&mut data).unwrap();
+        // let empty_pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
 
-   //     // 2. Invalidate the circuit by setting the value of a coefficient of the polynomial `r1is[0]` to be out of range
-   //     let out_of_range_coeff = R1_LOW_BOUNDS[0] + 1;
-   //     pk_enc_circuit.r1is[0][0] = out_of_range_coeff.to_string();
+    //     // 2. Generate (unsafe) trusted setup parameters
+    //     // Here we are setting a small k for optimization purposes
+    //     let k = 16;
+    //     let kzg_params = gen_srs(k as u32);
 
-   //     // 3. Build the circuit for MockProver
-   //     let rlc_circuit_params = test_params();
-   //     let mut mock_builder: RlcCircuitBuilder<Fr> =
-   //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
-   //             .use_params(rlc_circuit_params.clone());
-   //     mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
-   //     mock_builder.base.set_instance_columns(1);
+    //     // 3. Build the circuit for key generation,
+    //     let mut key_gen_builder =
+    //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Keygen, 0).use_k(k);
+    //     key_gen_builder.base.set_lookup_bits(k - 1);
+    //     key_gen_builder.base.set_instance_columns(1);
+    //     let rlc_circuit = RlcExecutor::new(key_gen_builder, empty_pk_enc_circuit.clone());
 
-   //     let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
+    //     // The parameters are auto configured by halo2 lib to fit all the columns into the `k`-sized table
+    //     let rlc_circuit_params = rlc_circuit.0.calculate_params(Some(9));
 
-   //     // 4. Run the mock prover
-   //     let invalid_mock_prover = MockProver::run(
-   //         rlc_circuit_params.base.k.try_into().unwrap(),
-   //         &rlc_circuit,
-   //         instances,
-   //     )
-   //     .unwrap();
+    //     // 4. Generate the verification key and the proving key
+    //     let vk = keygen_vk(&kzg_params, &rlc_circuit).unwrap();
+    //     let pk = keygen_pk(&kzg_params, vk, &rlc_circuit).unwrap();
+    //     let break_points = rlc_circuit.0.builder.borrow().break_points();
+    //     drop(rlc_circuit);
 
-   //     // 5. Assert that the circuit is not satisfied
-   //     // In particular, it should fail the range check enforced in the second phase for the first coefficient of r1is[0] and the equality check in the second phase for the 0-th basis
-   //     assert_eq!(
-   //         invalid_mock_prover.verify(),
-   //         Err(vec![
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 115709 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 115719 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914202 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914222 }
-   //             },
-   //         ])
-   //     );
-   // }
+    //     // 5. Generate the proof, here we pass the actual inputs
+    //     let mut proof_gen_builder: RlcCircuitBuilder<Fr> =
+    //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Prover, 0)
+    //             .use_params(rlc_circuit_params);
+    //     proof_gen_builder.base.set_lookup_bits(k - 1);
+    //     proof_gen_builder.base.set_instance_columns(1);
 
-   // #[test]
-   // pub fn test_pk_enc_invalid_polys() {
-   //     // 1. Define the inputs of the circuit
+    //     let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
+    //     //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+    //     let mut file = File::open(file_path).unwrap();
+    //     let mut data = String::new();
+    //     file.read_to_string(&mut data).unwrap();
+    //     let pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+    //     let instances = pk_enc_circuit.instances();
 
-   //     let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
-   //     let mut file = File::open(file_path).unwrap();
-   //     let mut data = String::new();
-   //     file.read_to_string(&mut data).unwrap();
-   //     let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+    //     let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
 
-   //     // 2. Invalidate the circuit by setting a different `s` polynomial
+    //     rlc_circuit
+    //         .0
+    //         .builder
+    //         .borrow_mut()
+    //         .set_break_points(break_points);
+    //     let proof = gen_proof_with_instances(&kzg_params, &pk, rlc_circuit, &[&instances[0]]);
 
-   //     let invalid_u = vec!["1".to_string(); 1024];
-   //     pk_enc_circuit.u = invalid_u;
+    //     // 6. Verify the proof. Note the first check is as well part of verifying the zkp
 
-   //     // 3. Build the circuit for MockProver
-   //     let rlc_circuit_params = test_params();
-   //     let mut mock_builder: RlcCircuitBuilder<Fr> =
-   //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
-   //             .use_params(rlc_circuit_params.clone());
-   //     mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
+    //     pk_enc_circuit.check_polynomial_bounds();
+    //     check_proof_with_instances(&kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+    // }
 
-   //     let instances = pk_enc_circuit.instances();
-   //     let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
+    // #[test]
+    // pub fn test_pk_enc_invalid_range() {
+    //     // 1. Define the inputs of the circuit
 
-   //     // 4. Run the mock prover
-   //     let invalid_mock_prover = MockProver::run(
-   //         rlc_circuit_params.base.k.try_into().unwrap(),
-   //         &rlc_circuit,
-   //         instances,
-   //     )
-   //     .unwrap();
+    //     let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+    //     let mut file = File::open(file_path).unwrap();
+    //     let mut data = String::new();
+    //     file.read_to_string(&mut data).unwrap();
+    //     let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+    //     let instances = pk_enc_circuit.instances();
 
-   //     // 5. Assert that the circuit is not satisfied
-   //     // In particular, it should fail the equality check (LHS=RHS) in the second phase for each i-th CRT basis
-   //     assert_eq!(
-   //         invalid_mock_prover.verify(),
-   //         Err(vec![
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::Fixed, 1).into(),
-   //                 location: FailureLocation::InRegion {
-   //                     region: (2, "base+rlc phase 1").into(),
-   //                     offset: 1
-   //                 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914202 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914222 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914230 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914250 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914258 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914278 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914286 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914306 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914314 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914334 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914342 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914362 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914370 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914390 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914398 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914418 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914426 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914446 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914454 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914474 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914482 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914502 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914510 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914530 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914538 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914558 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914566 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914586 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914594 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914610 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914618 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914634 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914642 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914658 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914666 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914682 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914690 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914706 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914714 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914730 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914738 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914754 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914762 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914778 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914786 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914802 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914810 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914826 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914834 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914850 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914858 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914874 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914882 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914898 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914906 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914922 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914930 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914946 }
-   //             },
-   //             VerifyFailure::Permutation {
-   //                 column: (Any::advice_in(SecondPhase), 1).into(),
-   //                 location: FailureLocation::OutsideRegion { row: 2914954 }
-   //             }
-   //         ])
-   //     );
-   // }
+    //     // 2. Invalidate the circuit by setting the value of a coefficient of the polynomial `r1is[0]` to be out of range
+    //     let out_of_range_coeff = R1_LOW_BOUNDS[0] + 1;
+    //     pk_enc_circuit.r1is[0][0] = out_of_range_coeff.to_string();
+
+    //     // 3. Build the circuit for MockProver
+    //     let rlc_circuit_params = test_params();
+    //     let mut mock_builder: RlcCircuitBuilder<Fr> =
+    //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
+    //             .use_params(rlc_circuit_params.clone());
+    //     mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
+    //     mock_builder.base.set_instance_columns(1);
+
+    //     let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
+
+    //     // 4. Run the mock prover
+    //     let invalid_mock_prover = MockProver::run(
+    //         rlc_circuit_params.base.k.try_into().unwrap(),
+    //         &rlc_circuit,
+    //         instances,
+    //     )
+    //     .unwrap();
+
+    //     // 5. Assert that the circuit is not satisfied
+    //     // In particular, it should fail the range check enforced in the second phase for the first coefficient of r1is[0] and the equality check in the second phase for the 0-th basis
+    //     assert_eq!(
+    //         invalid_mock_prover.verify(),
+    //         Err(vec![
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 115709 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 115719 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914202 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914222 }
+    //             },
+    //         ])
+    //     );
+    // }
+
+    // #[test]
+    // pub fn test_pk_enc_invalid_polys() {
+    //     // 1. Define the inputs of the circuit
+
+    //     let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
+    //     let mut file = File::open(file_path).unwrap();
+    //     let mut data = String::new();
+    //     file.read_to_string(&mut data).unwrap();
+    //     let mut pk_enc_circuit = serde_json::from_str::<BfvPkEncryptionCircuit>(&data).unwrap();
+
+    //     // 2. Invalidate the circuit by setting a different `s` polynomial
+
+    //     let invalid_u = vec!["1".to_string(); 1024];
+    //     pk_enc_circuit.u = invalid_u;
+
+    //     // 3. Build the circuit for MockProver
+    //     let rlc_circuit_params = test_params();
+    //     let mut mock_builder: RlcCircuitBuilder<Fr> =
+    //         RlcCircuitBuilder::from_stage(CircuitBuilderStage::Mock, 0)
+    //             .use_params(rlc_circuit_params.clone());
+    //     mock_builder.base.set_lookup_bits(8); // Set the lookup bits to 8
+
+    //     let instances = pk_enc_circuit.instances();
+    //     let rlc_circuit = RlcExecutor::new(mock_builder, pk_enc_circuit);
+
+    //     // 4. Run the mock prover
+    //     let invalid_mock_prover = MockProver::run(
+    //         rlc_circuit_params.base.k.try_into().unwrap(),
+    //         &rlc_circuit,
+    //         instances,
+    //     )
+    //     .unwrap();
+
+    //     // 5. Assert that the circuit is not satisfied
+    //     // In particular, it should fail the equality check (LHS=RHS) in the second phase for each i-th CRT basis
+    //     assert_eq!(
+    //         invalid_mock_prover.verify(),
+    //         Err(vec![
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::Fixed, 1).into(),
+    //                 location: FailureLocation::InRegion {
+    //                     region: (2, "base+rlc phase 1").into(),
+    //                     offset: 1
+    //                 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914202 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914222 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914230 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914250 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914258 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914278 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914286 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914306 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914314 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914334 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914342 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914362 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914370 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914390 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914398 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914418 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914426 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914446 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914454 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914474 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914482 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914502 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914510 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914530 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914538 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914558 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914566 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914586 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914594 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914610 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914618 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914634 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914642 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914658 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914666 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914682 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914690 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914706 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914714 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914730 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914738 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914754 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914762 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914778 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914786 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914802 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914810 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914826 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914834 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914850 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914858 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914874 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914882 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914898 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914906 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914922 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914930 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914946 }
+    //             },
+    //             VerifyFailure::Permutation {
+    //                 column: (Any::advice_in(SecondPhase), 1).into(),
+    //                 location: FailureLocation::OutsideRegion { row: 2914954 }
+    //             }
+    //         ])
+    //     );
+    // }
 
     #[test]
     #[cfg(feature = "bench")]
     pub fn bench_pk_enc_full_prover() {
-
         //let file_path = "src/data/pk_enc_data/pk_enc_1024_15x60_65537.json";
         let file_path = "src/data/pk_enc_data/pk_enc_1024_2x52_2048.json";
 
@@ -1144,13 +1291,20 @@ mod test {
             let instances = pk_enc_circuit.instances();
 
             let timer = std::time::Instant::now();
-            let proof = gen_proof_with_instances(&config.kzg_params, &pk, rlc_circuit, &[&instances[0]]);
+            let proof =
+                gen_proof_with_instances(&config.kzg_params, &pk, rlc_circuit, &[&instances[0]]);
             let proof_gen_time = timer.elapsed();
 
             // 6. Verify the proof. Note the first check is as well part of verifying the zkp
             let timer = std::time::Instant::now();
             pk_enc_circuit.check_polynomial_bounds();
-            check_proof_with_instances(&config.kzg_params, pk.get_vk(), &proof, &[&instances[0]], true);
+            check_proof_with_instances(
+                &config.kzg_params,
+                pk.get_vk(),
+                &proof,
+                &[&instances[0]],
+                true,
+            );
             let proof_verification_time = timer.elapsed();
 
             table.add_row(row![

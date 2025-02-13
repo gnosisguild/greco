@@ -1,5 +1,5 @@
 use axiom_eth::rlc::chip::RlcChip;
-use halo2_base::{
+use axiom_eth::halo2_base::{
     gates::{GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
     AssignedValue, Context,
