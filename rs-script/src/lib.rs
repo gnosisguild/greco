@@ -1,4 +1,4 @@
-mod poly;
+pub mod poly;
 
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
@@ -28,19 +28,20 @@ use poly::*;
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
 pub struct InputValidationVectors {
-    pk0is: Vec<Vec<BigInt>>,
-    pk1is: Vec<Vec<BigInt>>,
-    ct0is: Vec<Vec<BigInt>>,
-    ct1is: Vec<Vec<BigInt>>,
-    r1is: Vec<Vec<BigInt>>,
-    r2is: Vec<Vec<BigInt>>,
-    p1is: Vec<Vec<BigInt>>,
-    p2is: Vec<Vec<BigInt>>,
-    k0is: Vec<BigInt>,
-    u: Vec<BigInt>,
-    e0: Vec<BigInt>,
-    e1: Vec<BigInt>,
-    k1: Vec<BigInt>,
+    pub pk0is: Vec<Vec<BigInt>>,
+    pub pk1is: Vec<Vec<BigInt>>,
+    pub ct0is: Vec<Vec<BigInt>>,
+    pub ct1is: Vec<Vec<BigInt>>,
+    pub r1is: Vec<Vec<BigInt>>,
+    pub r2is: Vec<Vec<BigInt>>,
+    pub p1is: Vec<Vec<BigInt>>,
+    pub p2is: Vec<Vec<BigInt>>,
+    pub k0is: Vec<BigInt>,
+    pub u: Vec<BigInt>,
+    pub e0: Vec<BigInt>,
+    pub e1: Vec<BigInt>,
+    pub k1: Vec<BigInt>,
+    pub vote: Vec<BigInt>,
 }
 
 impl InputValidationVectors {
@@ -69,6 +70,7 @@ impl InputValidationVectors {
             e0: vec![BigInt::zero(); degree],
             e1: vec![BigInt::zero(); degree],
             k1: vec![BigInt::zero(); degree],
+            vote: vec![BigInt::zero(); degree],
         }
     }
 
@@ -96,6 +98,7 @@ impl InputValidationVectors {
             e0: reduce_coefficients(&self.e0, p),
             e1: reduce_coefficients(&self.e1, p),
             k1: reduce_coefficients(&self.k1, p),
+            vote: self.vote.clone(),
         }
     }
 
@@ -112,6 +115,7 @@ impl InputValidationVectors {
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
             "k1": to_string_1d_vec(&self.k1),
+            "vote": to_string_1d_vec(&self.vote),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
             "p2is": to_string_2d_vec(&self.p2is),
@@ -158,6 +162,7 @@ impl InputValidationVectors {
             check_1d_lengths(&self.e0, degree),
             check_1d_lengths(&self.e1, degree),
             check_1d_lengths(&self.k1, degree),
+            check_1d_lengths(&self.vote, degree),
         ]
         .iter()
         .all(|&check| check)
@@ -182,6 +187,12 @@ impl InputValidationVectors {
         ct: &Ciphertext,
         pk: &PublicKey,
     ) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
+        // ============= Binary check =============
+        // Check if all values in pt.value are either 0 or 1
+        // if !pt.value.deref().iter().all(|&v| v == 0 || v == 1) {
+        //     return Err("Vote must be either 0 or 1".into());
+        // }
+
         // Get context, plaintext modulus, and degree
         let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
@@ -489,6 +500,14 @@ impl InputValidationVectors {
         res.e0 = e0;
         res.e1 = e1;
         res.k1 = k1;
+        res.vote = pt
+            .value
+            .deref()
+            .to_vec()
+            .iter()
+            .map(|&x| BigInt::from(x))
+            .rev()
+            .collect();
 
         Ok(res)
     }
@@ -719,13 +738,14 @@ impl InputValidationBounds {
     ///
     /// This function calculates certain constants like `k0i` values for each modulus `qi` and writes the bounds and other
     /// relevant constants in a Rust-friendly format to the file specified by `output_file`.
-    fn to_file(
+    pub fn to_file(
         &self,
         params: &Arc<BfvParameters>,
         output_file: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let level = params.moduli().len() - self.r2.len();
         let ctx = params.ctx_at_level(level)?;
+        let q_mod_t = BigInt::from(ctx.modulus() % params.plaintext());
 
         // Calculate k0i constants
         let k0i_constants = ctx
@@ -872,147 +892,48 @@ impl InputValidationBounds {
             k0is_str
         )?;
 
+        writeln!(file, "/// `q_mod_t` is the remainder of the ciphertext modulus `q` divided by the plaintext modulus `t`.")?;
+        writeln!(file, "pub const Q_MOD_T: u64 = {};", q_mod_t)?;
+
         Ok(())
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Set up the BFV parameters
-
-    let N: u64 = 1024;
-
-    //let plaintext_modulus: u64 = 65537;
-    let plaintext_modulus: u64 = 2048;
-
-    // let moduli: Vec<u64> = vec![
-    //   1152921504606584833,
-    //   1152921504598720513,
-    //   1152921504597016577,
-    //   1152921504595968001,
-    //   1152921504595640321,
-    //   1152921504593412097,
-    //   1152921504592822273,
-    //   1152921504592429057,
-    //   1152921504589938689,
-    //   1152921504586530817,
-    //   1152921504585547777,
-    //   1152921504583647233,
-    //   1152921504581877761,
-    //   1152921504581419009,
-    //   1152921504580894721
-    // ];
-
-    let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
-    //let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
-    //let moduli: Vec<u64> = vec![1038337,18014398492704769,4503599625535489, 4503599626321921];
-    //let moduli: Vec<u64> = vec![1038337];
-    //let moduli: Vec<u64> = vec![
-    //18014398492704769
-    //];
-
-    //let moduli_sizes = [20];
-
+pub fn input_validation_generator(
+    degree: u64,
+    plaintext_modulus: u64,
+    moduli: Vec<u64>,
+    input: u64,
+) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
     let params = BfvParametersBuilder::new()
-        .set_degree(N as usize)
+        .set_degree(degree as usize)
         .set_plaintext_modulus(plaintext_modulus)
         .set_moduli(&moduli)
-        //.set_moduli_sizes(&moduli_sizes)
         .build_arc()?;
 
-    // Extract plaintext modulus
-    let t = Modulus::new(params.plaintext())?;
-
-    // Use a seedable rng for experimental reproducibility
     let mut rng = StdRng::seed_from_u64(0);
 
-    // Generate the secret and public keys
     let sk = SecretKey::random(&params, &mut rng);
-
     let pk = PublicKey::new(&sk, &mut rng);
 
-    //Sample a message and encrypt
-    let m = t.random_vec(N as usize, &mut rng);
-    //let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
-    let pt = Plaintext::try_encode(&m, Encoding::poly(), &params)?;
-
-    // Extract context
-    let ctx = params.ctx_at_level(pt.level())?.clone();
+    let pt = Plaintext::try_encode(&[input], Encoding::poly(), &params)?;
     let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng)?;
 
-    // Sanity check. m = Decrypt(ct)
+    let res = InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk)?;
 
-    //let m_decrypted = unsafe { t.center_vec_vt(&sk.try_decrypt(&ct)?.value.into_vec()) };
-    let m_decrypted = sk.try_decrypt(&ct)?.value.into_vec();
-    assert_eq!(m_decrypted, m);
-
-    let moduli = ctx.moduli();
-    // Initialize zk proving modulus
     let p = BigInt::from_str_radix(
         "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         10,
     )?;
 
-    // Compute input validation vectors
-    let res = InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk)?;
-
-    // Create output json with standard form polynomials
-    let json_data = res.standard_form(&p).to_json();
-
-    // Calculate bounds ---------------------------------------------------------------------
-    let bounds = InputValidationBounds::compute(&params, pt.level())?;
-
-    // Check the constraints
-    bounds.check_constraints(&res, &p);
-
-    let moduli_bitsize = {
-        if let Some(&max_value) = ctx.moduli().iter().max() {
-            64 - max_value.leading_zeros()
-        } else {
-            0
-        }
-    };
-
-    // Write out files ----------------------------------------------------------------------
-    let output_path = Path::new("src").join("data").join("pk_enc_data");
-
-    // Generate filename and write file
-    let filename = format!(
-        "pk_enc_{}_{}x{}_{}.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    write_json_to_file(&output_path, &filename, &json_data);
-
-    // Generate zeros filename and write file
-    let filename_zeroes = format!(
-        "pk_enc_{}_{}x{}_{}_zeroes.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    let zeroes_json = InputValidationVectors::new(moduli.len(), params.degree()).to_json();
-    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
-
-    let filename_constants = format!(
-        "pk_enc_constants_{}_{}x{}_{}.rs",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    bounds.to_file(&params, &filename_constants)?;
-
-    Ok(())
+    Ok(res.standard_form(&p))
 }
 
-fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
+pub fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
     poly.iter().map(|coef| coef.to_string()).collect()
 }
 
-fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
+pub fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
     poly.iter().map(|row| to_string_1d_vec(row)).collect()
 }
 
@@ -1027,7 +948,7 @@ fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
 /// # Panics
 ///
 /// This function will panic if the file cannot be created or if writing to the file fails.
-fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json::Value) {
+pub fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json::Value) {
     let file_path = output_path.join(filename);
     let mut file = File::create(file_path).expect("Unable to create file");
     file.write_all(serde_json::to_string_pretty(json_data).unwrap().as_bytes())

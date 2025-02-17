@@ -10,6 +10,10 @@ Circuit for proving the correct encryption under BFV fully homomorphic encryptio
 To generate the parameters for the secret key proof of encryption circuit run the following command:
 
 ```bash
+cargo run --package greco-script --bin generate
+```
+
+```bash
 python3 scripts/circuit_sk.py -n 4096 -qis '[                                      
     27424203952895201, 
     27424203952895203

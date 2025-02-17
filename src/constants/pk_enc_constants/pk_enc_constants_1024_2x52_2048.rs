@@ -22,3 +22,5 @@ pub const K1_UP_BOUND: u64 = 1023;
 pub const QIS: [&str; 2] = ["4503599625535489", "4503599626321921"];
 /// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.
 pub const K0IS: [&str; 2] = ["2199023254656", "2199023255040"];
+/// `q_mod_t` is the remainder of the ciphertext modulus `q` divided by the plaintext modulus `t`.
+pub const Q_MOD_T: u64 = 1;
