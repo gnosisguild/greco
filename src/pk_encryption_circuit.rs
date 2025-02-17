@@ -76,7 +76,7 @@ pub struct BfvPkEncryptionCircuit {
     e0: Vec<String>,
     e1: Vec<String>,
     k1: Vec<String>,
-    vote: Vec<String>,
+    pt_input: Vec<String>,
     r2is: Vec<Vec<String>>,
     r1is: Vec<Vec<String>>,
     p2is: Vec<Vec<String>>,
@@ -102,7 +102,7 @@ impl BfvPkEncryptionCircuit {
             e0: vec![zero_str.clone(); degree],
             e1: vec![zero_str.clone(); degree],
             k1: vec![zero_str.clone(); degree],
-            vote: vec![zero_str.clone(); degree],
+            pt_input: vec![zero_str.clone(); degree],
         }
     }
 }
@@ -122,7 +122,7 @@ impl From<InputValidationVectors> for BfvPkEncryptionCircuit {
             e0: to_string_1d_vec(&input.e0),
             e1: to_string_1d_vec(&input.e1),
             k1: to_string_1d_vec(&input.k1),
-            vote: to_string_1d_vec(&input.vote),
+            pt_input: to_string_1d_vec(&input.pt_input),
         }
     }
 }
@@ -135,7 +135,7 @@ pub struct Payload<F: ScalarField> {
     e0_assigned: PolyAssigned<F>,
     e1_assigned: PolyAssigned<F>,
     k1_assigned: PolyAssigned<F>,
-    vote_assigned: PolyAssigned<F>,
+    pt_input_assigned: PolyAssigned<F>,
     r2is_assigned: Vec<PolyAssigned<F>>,
     r1is_assigned: Vec<PolyAssigned<F>>,
     p2is_assigned: Vec<PolyAssigned<F>>,
@@ -323,8 +323,8 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let k1 = Poly::<F>::new(self.k1.clone());
         let k1_assigned = PolyAssigned::new(ctx, k1);
 
-        let vote = Poly::<F>::new(self.vote.clone());
-        let vote_assigned = PolyAssigned::new(ctx, vote);
+        let pt_input = Poly::<F>::new(self.pt_input.clone());
+        let pt_input_assigned = PolyAssigned::new(ctx, pt_input);
 
         let r1is_assigned = self
             .r1is
@@ -416,7 +416,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             p1is_assigned,
             ct0is_assigned,
             ct1is_assigned,
-            vote_assigned,
+            pt_input_assigned,
         }
     }
 
@@ -466,7 +466,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             e0_assigned,
             e1_assigned,
             k1_assigned,
-            vote_assigned,
+            pt_input_assigned,
             r2is_assigned,
             r1is_assigned,
             p2is_assigned,
@@ -481,8 +481,8 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let gate = range.gate();
 
         // ============= (a) Binary check =============
-        // For each coefficient of `vote`, enforce v_i * (v_i - 1) = 0
-        for &v_i in vote_assigned.assigned_coefficients.iter() {
+        // For each coefficient of `pt_input`, enforce v_i * (v_i - 1) = 0
+        for &v_i in pt_input_assigned.assigned_coefficients.iter() {
             let v_i_minus_1 = gate.sub(ctx_gate, v_i, Constant(F::ONE));
             let product = gate.mul(ctx_gate, v_i, v_i_minus_1);
             gate.assert_is_const(ctx_gate, &product, &F::ZERO);
@@ -491,7 +491,7 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let q_mod_t: F = F::from(Q_MOD_T);
 
         // Then for each coefficient i:
-        for (v_i, k1_i) in vote_assigned
+        for (v_i, k1_i) in pt_input_assigned
             .assigned_coefficients
             .iter()
             .zip(k1_assigned.assigned_coefficients.iter())

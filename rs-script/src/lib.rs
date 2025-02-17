@@ -41,7 +41,7 @@ pub struct InputValidationVectors {
     pub e0: Vec<BigInt>,
     pub e1: Vec<BigInt>,
     pub k1: Vec<BigInt>,
-    pub vote: Vec<BigInt>,
+    pub pt_input: Vec<BigInt>,
 }
 
 impl InputValidationVectors {
@@ -70,7 +70,7 @@ impl InputValidationVectors {
             e0: vec![BigInt::zero(); degree],
             e1: vec![BigInt::zero(); degree],
             k1: vec![BigInt::zero(); degree],
-            vote: vec![BigInt::zero(); degree],
+            pt_input: vec![BigInt::zero(); degree],
         }
     }
 
@@ -98,7 +98,7 @@ impl InputValidationVectors {
             e0: reduce_coefficients(&self.e0, p),
             e1: reduce_coefficients(&self.e1, p),
             k1: reduce_coefficients(&self.k1, p),
-            vote: self.vote.clone(),
+            pt_input: self.pt_input.clone(),
         }
     }
 
@@ -115,7 +115,7 @@ impl InputValidationVectors {
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
             "k1": to_string_1d_vec(&self.k1),
-            "vote": to_string_1d_vec(&self.vote),
+            "pt_input": to_string_1d_vec(&self.pt_input),
             "r2is": to_string_2d_vec(&self.r2is),
             "r1is": to_string_2d_vec(&self.r1is),
             "p2is": to_string_2d_vec(&self.p2is),
@@ -162,7 +162,7 @@ impl InputValidationVectors {
             check_1d_lengths(&self.e0, degree),
             check_1d_lengths(&self.e1, degree),
             check_1d_lengths(&self.k1, degree),
-            check_1d_lengths(&self.vote, degree),
+            check_1d_lengths(&self.pt_input, degree),
         ]
         .iter()
         .all(|&check| check)
@@ -190,7 +190,7 @@ impl InputValidationVectors {
         // ============= Binary check =============
         // Check if all values in pt.value are either 0 or 1
         // if !pt.value.deref().iter().all(|&v| v == 0 || v == 1) {
-        //     return Err("Vote must be either 0 or 1".into());
+        //     return Err("pt_input must be either 0 or 1".into());
         // }
 
         // Get context, plaintext modulus, and degree
@@ -500,7 +500,7 @@ impl InputValidationVectors {
         res.e0 = e0;
         res.e1 = e1;
         res.k1 = k1;
-        res.vote = pt
+        res.pt_input = pt
             .value
             .deref()
             .to_vec()
