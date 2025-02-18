@@ -1,5 +1,3 @@
-use core::assert;
-use greco_script::{InputValidationVectors, to_string_1d_vec, to_string_2d_vec, input_validation_generator};
 use axiom_eth::halo2_base::{
     gates::{circuit::BaseCircuitParams, GateInstructions, RangeChip, RangeInstructions},
     utils::ScalarField,
@@ -8,6 +6,10 @@ use axiom_eth::halo2_base::{
 use axiom_eth::rlc::{
     chip::RlcChip,
     circuit::{builder::RlcCircuitBuilder, instructions::RlcCircuitInstructions, RlcCircuitParams},
+};
+use core::assert;
+use greco_script::{
+    input_validation_generator, to_string_1d_vec, to_string_2d_vec, InputValidationVectors,
 };
 use serde::Deserialize;
 
@@ -27,11 +29,11 @@ use crate::{
         P2_BOUNDS,
         PK_BOUND,
         QIS,
+        Q_MOD_T,
         R1_LOW_BOUNDS,
         R1_UP_BOUNDS,
         R2_BOUNDS,
         U_BOUND,
-        Q_MOD_T
     },
     poly::{Poly, PolyAssigned},
 };
@@ -76,7 +78,6 @@ pub struct BfvPkEncryptionCircuit {
     e0: Vec<String>,
     e1: Vec<String>,
     k1: Vec<String>,
-    pt_input: Vec<String>,
     r2is: Vec<Vec<String>>,
     r1is: Vec<Vec<String>>,
     p2is: Vec<Vec<String>>,
@@ -102,7 +103,6 @@ impl BfvPkEncryptionCircuit {
             e0: vec![zero_str.clone(); degree],
             e1: vec![zero_str.clone(); degree],
             k1: vec![zero_str.clone(); degree],
-            pt_input: vec![zero_str.clone(); degree],
         }
     }
 }
@@ -122,7 +122,6 @@ impl From<InputValidationVectors> for BfvPkEncryptionCircuit {
             e0: to_string_1d_vec(&input.e0),
             e1: to_string_1d_vec(&input.e1),
             k1: to_string_1d_vec(&input.k1),
-            pt_input: to_string_1d_vec(&input.pt_input),
         }
     }
 }
@@ -135,7 +134,6 @@ pub struct Payload<F: ScalarField> {
     e0_assigned: PolyAssigned<F>,
     e1_assigned: PolyAssigned<F>,
     k1_assigned: PolyAssigned<F>,
-    pt_input_assigned: PolyAssigned<F>,
     r2is_assigned: Vec<PolyAssigned<F>>,
     r1is_assigned: Vec<PolyAssigned<F>>,
     p2is_assigned: Vec<PolyAssigned<F>>,
@@ -323,9 +321,6 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let k1 = Poly::<F>::new(self.k1.clone());
         let k1_assigned = PolyAssigned::new(ctx, k1);
 
-        let pt_input = Poly::<F>::new(self.pt_input.clone());
-        let pt_input_assigned = PolyAssigned::new(ctx, pt_input);
-
         let r1is_assigned = self
             .r1is
             .iter()
@@ -416,7 +411,6 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             p1is_assigned,
             ct0is_assigned,
             ct1is_assigned,
-            pt_input_assigned,
         }
     }
 
@@ -466,7 +460,6 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
             e0_assigned,
             e1_assigned,
             k1_assigned,
-            pt_input_assigned,
             r2is_assigned,
             r1is_assigned,
             p2is_assigned,
@@ -481,25 +474,13 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let gate = range.gate();
 
         // ============= (a) Binary check =============
-        // For each coefficient of `pt_input`, enforce v_i * (v_i - 1) = 0
-        for &v_i in pt_input_assigned.assigned_coefficients.iter() {
-            let v_i_minus_1 = gate.sub(ctx_gate, v_i, Constant(F::ONE));
-            let product = gate.mul(ctx_gate, v_i, v_i_minus_1);
-            gate.assert_is_const(ctx_gate, &product, &F::ZERO);
-        }
-
-        let q_mod_t: F = F::from(Q_MOD_T);
-
-        // Then for each coefficient i:
-        for (v_i, k1_i) in pt_input_assigned
-            .assigned_coefficients
-            .iter()
-            .zip(k1_assigned.assigned_coefficients.iter())
-        {
-            // Expect: k1_i == q_mod_t * v_i
-            let rhs = gate.mul(ctx_gate, *v_i, Constant(q_mod_t));
-            let eq_check = gate.is_equal(ctx_gate, *k1_i, rhs);
-            gate.assert_is_const(ctx_gate, &eq_check, &F::ONE);
+        // For each coefficient of `K1[i]`, enforce K1[i] * (Q_mod_t - K1[i]) = 0
+        let q_mod_t = Constant(F::from(Q_MOD_T));
+        for &k1_i in k1_assigned.assigned_coefficients.iter() {
+            // Enforce binary in {0, Q_mod_t}:
+            let term = gate.sub(ctx_gate, q_mod_t, k1_i); // Q_mod_t - k1_i
+            let product = gate.mul(ctx_gate, k1_i, term); // k1_i * (Q_mod_t - k1_i)
+            gate.assert_is_const(ctx_gate, &product, &F::ZERO); // must be 0
         }
 
         let mut qi_constants = vec![];
@@ -634,7 +615,7 @@ mod test {
     use std::io::Read;
     use std::io::Write;
 
-    use greco_script::{InputValidationVectors, input_validation_generator};
+    use greco_script::{input_validation_generator, InputValidationVectors};
 
     use axiom_eth::halo2_base::{
         gates::circuit::CircuitBuilderStage,
@@ -680,11 +661,11 @@ mod test {
         let num_moduli: usize = moduli.len();
         let input: u64 = 1;
 
-        
         // --------------------------------------------------
         // (1) Create the empty circuit
         // --------------------------------------------------
-        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(num_moduli, degree as usize);
+        let empty_pk_enc_circuit =
+            BfvPkEncryptionCircuit::create_empty_circuit(num_moduli, degree as usize);
 
         // 2. Generate (unsafe) trusted setup parameters
         // Here we are setting a small k for optimization purposes
@@ -714,7 +695,10 @@ mod test {
         proof_gen_builder.base.set_lookup_bits(k - 1);
         proof_gen_builder.base.set_instance_columns(1);
 
-        let pk_enc_circuit: BfvPkEncryptionCircuit = input_validation_generator(degree, plaintext_modulus, moduli, input).unwrap().into();
+        let pk_enc_circuit: BfvPkEncryptionCircuit =
+            input_validation_generator(degree, plaintext_modulus, moduli, input)
+                .unwrap()
+                .into();
 
         let rlc_circuit = RlcExecutor::new(proof_gen_builder, pk_enc_circuit.clone());
 
@@ -741,13 +725,14 @@ mod test {
         let plaintext_modulus: u64 = 2048;
         let moduli: Vec<u64> = vec![4503599625535489, 4503599626321921];
         let num_moduli: usize = moduli.len();
-        let input: u64 = 0;
+        let input: u64 = 1;
 
         // --------------------------------------------------
         // (A) Generate a proof & verify it locally
         // --------------------------------------------------
         // Zero file for keygen circuit sizing
-        let empty_pk_enc_circuit = BfvPkEncryptionCircuit::create_empty_circuit(num_moduli, degree as usize);
+        let empty_pk_enc_circuit =
+            BfvPkEncryptionCircuit::create_empty_circuit(num_moduli, degree as usize);
 
         let k = 15;
         let kzg_params = gen_srs(k);
@@ -771,7 +756,8 @@ mod test {
         let break_points = rlc_circuit_for_keygen.0.builder.borrow().break_points();
         drop(rlc_circuit_for_keygen);
 
-        let input_validation_vectors = input_validation_generator(degree, plaintext_modulus, moduli, input).unwrap();
+        let input_validation_vectors =
+            input_validation_generator(degree, plaintext_modulus, moduli, input).unwrap();
 
         let pk_enc_circuit: BfvPkEncryptionCircuit = input_validation_vectors.into();
         let instances: Vec<Vec<Fr>> = pk_enc_circuit.instances();
