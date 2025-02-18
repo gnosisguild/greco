@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-axiom-eth = { git = "https://github.com/enricobottazzi/axiom-eth", default-features = false, features = ["halo2-axiom"] }
+axiom-eth = { git = "https://github.com/enricobottazzi/axiom-eth" }
 halo2_solidity_verifier = { git = "https://github.com/hmzakhalid/halo2-solidity-verifier.git", features = ["evm"] }
+greco-script = { path = "./rs-script" }
 rand = "0.8"
 serde = { version = "=1.0", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0", default-features = false }
