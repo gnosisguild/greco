@@ -474,14 +474,12 @@ impl<F: ScalarField> RlcCircuitInstructions<F> for BfvPkEncryptionCircuit {
         let gate = range.gate();
 
         // ============= (a) Binary check =============
-        // For each coefficient of `K1[i]`, enforce K1[i] * (Q_mod_t - K1[i]) = 0
+        // Enforce the last coefficient K1[N-1] of `K1` to be in {0, Q_mod_t}. This is done
+        // through checking if K1[N-1] * (Q_mod_t - K1[N-1]) = 0
         let q_mod_t = Constant(F::from(Q_MOD_T));
-        for &k1_i in k1_assigned.assigned_coefficients.iter() {
-            // Enforce binary in {0, Q_mod_t}:
-            let term = gate.sub(ctx_gate, q_mod_t, k1_i); // Q_mod_t - k1_i
-            let product = gate.mul(ctx_gate, k1_i, term); // k1_i * (Q_mod_t - k1_i)
-            gate.assert_is_const(ctx_gate, &product, &F::ZERO); // must be 0
-        }
+        let term = gate.sub(ctx_gate, q_mod_t, k1_assigned.assigned_coefficients[N-1]); // Q_mod_t - k1_{N-1}
+        let product = gate.mul(ctx_gate, k1_assigned.assigned_coefficients[N-1], term); // k1_{N-1} * (Q_mod_t - k1_{N-1})
+        gate.assert_is_const(ctx_gate, &product, &F::ZERO); // must be 0
 
         let mut qi_constants = vec![];
         let mut k0i_constants = vec![];
