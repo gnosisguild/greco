@@ -27,27 +27,30 @@ impl Challenge {
         self.state = poseidon2_permutation(self.state, 4);
     }
 
-    pub(crate) fn absorb(&mut self, input: Field) {
-        if self.cache_size == RATE {
-            // If we're absorbing, and the cache is full, apply the sponge permutation to compress the cache
-            self.perform_duplex();
-            self.cache[0] = input;
-            self.cache_size = 1;
-        } else {
-            // If we're absorbing, and the cache is not full, add the input into the cache
-            self.cache[self.cache_size] = input;
-            self.cache_size += 1;
+    // Absorbs input(s)
+    pub(crate) fn absorb(&mut self, inputs: Vec<Field>) {
+        let length = inputs.len();
+        for i in 0..length {
+            if self.cache_size == RATE {
+                // If we're absorbing, and the cache is full, apply the sponge permutation to compress the cache
+                self.perform_duplex();
+                self.cache[0] = inputs.get(i);
+                self.cache_size = 1;
+            } else {
+                // If we're absorbing, and the cache is not full, add the input into the cache
+                self.cache[self.cache_size] = inputs.get(i);
+                self.cache_size += 1;
+            }
         }
     }
 
     pub(crate) fn squeeze(&mut self) -> Field {
-        // If we're in absorb mode, apply sponge permutation to compress the cache.
         self.perform_duplex();
-
-        // Pop one item off the top of the permutation and return it.
+        // Pop first item off the top of the permutation and return it.
         self.state[0]
     }
 
+    // Finish and clear the sponge (Maybe not needed?)
     pub(crate) fn finish(&mut self) {
         // Overwrite state and cache to erase it
         self.state = [0; 4];
@@ -60,7 +63,9 @@ impl Challenge {
 #[test]
 fn test_challenge() {
     let mut challenge = Challenge::new();
-    challenge.absorb(3);
+    let mut input = Vec::new();
+    input.push(3);
+    challenge.absorb(input);
     let result = challenge.squeeze();
     assert_eq(result, 0x242625e88b1aae5923a32b65ae620a8fd0830822031e994d6c241f06eb899c69);
     challenge.finish();
