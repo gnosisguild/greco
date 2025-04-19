@@ -1,0 +1,6 @@
+[package]
+name = "greco"
+type = "lib"
+authors = [""]
+
+[dependencies]
