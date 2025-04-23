@@ -23,22 +23,21 @@ impl Polynomial {
         }
     }
 
-    /// Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2*upper_bound]`.
+    ///  Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2 * upper_bound]`.
     pub fn range_check_1bound(self, upper_bound: u64) {
-        for coeff in 0..self.coefficients.len() {
-            assert_lt(self.coefficients.get(coeff), 2 * upper_bound as Field + 1);
+        for i in 0..self.coefficients.len() {
+            let shifted_coeff = self.coefficients.get(i) + upper_bound as Field;
+            assert_lt(shifted_coeff, (2 * upper_bound as Field) + 1);
         }
     }
 
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
     pub fn range_check_2bounds(self, upper_bound: u64, lower_bound: i64) {
-        let mut value_shift = lower_bound as u64;
-        if lower_bound < 0 {
-            value_shift = (lower_bound * -1) as u64;
-        }
-        for coeff in 0..self.coefficients.len() {
+        let mut value_shift = (lower_bound * -1) as u64;
+        for i in 0..self.coefficients.len() {
+            let shifted_coeff = self.coefficients.get(i) + value_shift as Field;
             assert_lt(
-                self.coefficients.get(coeff),
+                shifted_coeff,
                 upper_bound as Field - lower_bound as Field + 1,
             );
         }
@@ -48,14 +47,13 @@ impl Polynomial {
 #[test]
 fn test_polynomial_bounds() {
     let mut coeffs = Vec::new();
-    coeffs.push(23);
-    coeffs.push(484);
-    coeffs.push(10);
+    coeffs.push(-16);
+    coeffs.push(240);
+    coeffs.push(242);
 
     let mut poly = Polynomial::new(coeffs);
-
     poly.range_check_1bound(242);
-    poly.range_check_2bounds(500, -16);
+    poly.range_check_2bounds(242, -16);
 }
 
 #[test]
