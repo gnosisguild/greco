@@ -741,7 +741,7 @@ impl InputValidationBounds {
             .collect::<Result<Vec<BigInt>, String>>()?;
 
         // Set the output file path
-        let output_path = Path::new("src")
+        let output_path = Path::new("scripts")
             .join("constants")
             .join("pk_enc_constants")
             .join(output_file);
@@ -848,31 +848,20 @@ impl InputValidationBounds {
         writeln!(file, "pub global K1_LOW_BOUND: i64 = {};", self.k1_low)?;
         writeln!(file, "pub global K1_UP_BOUND: u64 = {};", self.k1_up)?;
 
-        let qis_str = ctx
-            .moduli()
-            .iter()
-            .map(|x| format!("\"{}\"", x))
-            .collect::<Vec<String>>()
-            .join(", ");
         writeln!(file, "/// List of scalars `qis` such that `qis[i]` is the modulus of the i-th CRT basis of `q` (ciphertext space modulus).")?;
         writeln!(
             file,
-            "pub global QIS: [Field; {}] = [{}];",
+            "pub global QIS: [Field; {}] = {:?};",
             ctx.moduli().len(),
-            qis_str
+            ctx.moduli()
         )?;
 
-        let k0is_str = k0i_constants
-            .iter()
-            .map(|x| format!("\"{}\"", x))
-            .collect::<Vec<String>>()
-            .join(", ");
         writeln!(file, "/// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.")?;
         writeln!(
             file,
-            "pub global K0IS: [Field; {}] = [{}];",
+            "pub global K0IS: [Field; {}] = {:?};",
             k0i_constants.len(),
-            k0is_str
+            k0i_constants
         )?;
 
         Ok(())
@@ -976,7 +965,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Write out files ----------------------------------------------------------------------
-    let output_path = Path::new("src").join("data").join("pk_enc_data");
+    let output_path = Path::new("scripts").join("pk_enc_data");
 
     // Generate filename and write file
     let filename = format!(
