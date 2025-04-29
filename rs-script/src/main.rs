@@ -208,15 +208,6 @@ impl InputValidationVectors {
         e0_rns_copy.change_representation(Representation::PowerBasis);
         e1_rns_copy.change_representation(Representation::PowerBasis);
 
-        // let mut u: Vec<BigInt> =
-        //     u_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
-        // let mut e0: Vec<BigInt> =
-        //     e0_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
-        // let mut e1: Vec<BigInt> =
-        //     e1_rns_copy.coefficients().to_slice().unwrap().to_vec().iter().rev().map(|&x| BigInt::from(x)).collect();
-
         let u: Vec<BigInt> = unsafe {
             ctx.moduli_operators()[0]
                 .center_vec_vt(
@@ -274,20 +265,10 @@ impl InputValidationVectors {
         pk1.change_representation(Representation::PowerBasis);
 
         // Create cyclotomic polynomial x^N + 1
-
         let mut cyclo = vec![BigInt::from(0u64); (N + 1) as usize];
 
         cyclo[0] = BigInt::from(1u64); // x^N term
         cyclo[N as usize] = BigInt::from(1u64); // x^0 term
-
-        // Print
-        /*
-        println!("m = {:?}\n", &m);
-        println!("k1 = {:?}\n", &k1);
-        println!("u = {:?}\n", &u);
-        println!("e0 = {:?}\n", &e0);
-        println!("e1 = {:?}\n", &e1);
-         */
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
@@ -453,23 +434,10 @@ impl InputValidationVectors {
                 }
 
                 assert_eq!(&ct1i, &ct1i_calculated);
-
-                /*
-                println!("qi = {:?}\n", &qi_bigint);
-                println!("ct0i = {:?}\n", &ct0i);
-                println!("k0qi = {:?}\n", &k0qi);
-                println!("pk0 = Polynomial({:?})\n", &pk0i);
-                println!("pk1 = Polynomial({:?})\n", &pk1i);
-                println!("ki = {:?}\n", &ki);
-                println!("ct0i_hat_mod_rqi = {:?}\n", &ct0i_hat_mod_rqi);
-                */
-
                 (i, r2i, r1i, k0qi, ct0i, ct1i, pk0i, pk1i, p1i, p2i)
             },
         )
         .collect();
-
-        // println!("Completed creation of polynomials!");
 
         // Merge results into the `res` structure after parallel execution
         for (i, r2i, r1i, k0i, ct0i, ct1i, pk0i, pk1i, p1i, p2i) in results.into_iter() {
@@ -535,7 +503,6 @@ impl InputValidationBounds {
         assert!(range_check_standard(&vecs_std.e1, &self.e, &p));
 
         // constraint. The coefficients of k1 should be in the range [-(t-1)]/2, (t-1)/2]
-
         assert!(range_check_centered(&vecs.k1, &self.k1_low, &self.k1_up));
         assert!(range_check_standard_2bounds(
             &vecs_std.k1,
@@ -653,7 +620,6 @@ impl InputValidationBounds {
         //where the plaintext modulus is even, the lower bound cannot be calculated by just
         //negating the upper bound. For instance, if t = 8, then the lower bound will be -4 and the
         //upper bound will be 3
-        //
         let ptxt_up_bound = (t.clone() - BigInt::from(1)) / BigInt::from(2);
         let ptxt_low_bound = if (t.clone() % BigInt::from(2)) == BigInt::from(1) {
             (-&(t.clone() - BigInt::from(1))) / BigInt::from(2)
@@ -870,7 +836,6 @@ impl InputValidationBounds {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up the BFV parameters
-
     let N: u64 = 1024;
 
     //let plaintext_modulus: u64 = 65537;
