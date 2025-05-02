@@ -719,7 +719,10 @@ impl InputValidationBounds {
 
         // Writing the constants to the file
         writeln!(file, "/// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.")?;
-        writeln!(file, "pub global N: u64 = {};", params.degree())?;
+        writeln!(file, "pub global N: u32 = {};", params.degree())?;
+
+        writeln!(file, "/// `L` is the dimension size of the polynomials. ")?;
+        writeln!(file, "pub global L: u32 = {};", self.pk.len())?;
 
         let pk_bound_str = self
             .pk

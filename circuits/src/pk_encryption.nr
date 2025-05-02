@@ -8,16 +8,16 @@ use poseidon::poseidon2::Poseidon2;
 pub struct BfvPkEncryptionCircuit {
     pub pk0i: [Polynomial<N>; L], // 1025, 1025
     pub pk1i: [Polynomial<N>; L], // 1025, 1025
+    pub ct0is: [Polynomial<N>; L], // 1025, 1025
+    pub ct1is: [Polynomial<N>; L], // 1025, 1025
     u: Polynomial<N>, // 1025
     e0: Polynomial<N>, // 1025
     e1: Polynomial<N>, // 1025
     k1: Polynomial<N>, // 1025
-    r2is: [Polynomial<N - 1>; L], // 1024, 1024
     r1is: [Polynomial<2 * N - 1>; L], // 2048, 2048
-    p2is: [Polynomial<N - 1>; L], // 1024, 1024
+    r2is: [Polynomial<N - 1>; L], // 1024, 1024
     p1is: [Polynomial<2 * N - 1>; L], // 2048, 2048
-    pub ct0is: [Polynomial<N>; L], // 1025, 1025
-    pub ct1is: [Polynomial<N>; L], // 1025, 1025
+    p2is: [Polynomial<N - 1>; L], // 1024, 1024
 }
 
 impl BfvPkEncryptionCircuit {
@@ -25,9 +25,8 @@ impl BfvPkEncryptionCircuit {
         // TODO: dummy challenge, fix it
         let inputs = [1, 2, 3, 4];
         let gamma = Poseidon2::hash(inputs, inputs.len());
-
         // TODO: cache calculation
-        let gamma = gamma.pow_32(N as Field) + 1;
+        let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
 
         // Bound check
         self.u.range_check_1bound(U_BOUND);
@@ -72,8 +71,8 @@ impl BfvPkEncryptionCircuit {
             // rhs = rhs + r1i(gamma) * qi
             let rhs = rhs + (r1i_at_gamma[i] * QIS[i]);
 
-            // rhs = rhs + r2i(gamma) * cyclo(gamma) TODO: fix dummy cyclo
-            let rhs = rhs + r2i_at_gamma[i];
+            // rhs = rhs + r2i(gamma) * cyclo(gamma)
+            let rhs = rhs + r2i_at_gamma[i] * cyclo_at_gamma;
             let lhs = self.ct0is[i].eval(gamma);
 
             // LHS(gamma) = RHS(gamma)
@@ -82,8 +81,8 @@ impl BfvPkEncryptionCircuit {
             // Second step
             let pk1_u = (pk1i_at_gamma[i] * u_at_gamma) + e1_at_gamma;
 
-            //rhs = pk1_u + p2i * cyclo(gamma) TODO: Fix dummy cyclo
-            let rhs = pk1_u + p2is_at_gamma[i];
+            //rhs = pk1_u + p2i * cyclo(gamma)
+            let rhs = pk1_u + p2is_at_gamma[i] * cyclo_at_gamma;
 
             //rhs = rhs + p1s * qi
             let rhs = rhs + (p1is_at_gamma[i] * QIS[i]);
