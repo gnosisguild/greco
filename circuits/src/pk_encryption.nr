@@ -6,26 +6,66 @@ use super::polynomial::Polynomial;
 use poseidon::poseidon2::Poseidon2;
 
 pub struct BfvPkEncryptionCircuit {
-    pub pk0i: [Polynomial<N>; L], // 1025, 1025
-    pub pk1i: [Polynomial<N>; L], // 1025, 1025
-    pub ct0is: [Polynomial<N>; L], // 1025, 1025
-    pub ct1is: [Polynomial<N>; L], // 1025, 1025
-    u: Polynomial<N>, // 1025
-    e0: Polynomial<N>, // 1025
-    e1: Polynomial<N>, // 1025
-    k1: Polynomial<N>, // 1025
-    r1is: [Polynomial<2 * N - 1>; L], // 2048, 2048
-    r2is: [Polynomial<N - 1>; L], // 1024, 1024
-    p1is: [Polynomial<2 * N - 1>; L], // 2048, 2048
-    p2is: [Polynomial<N - 1>; L], // 1024, 1024
+    pk0i: [Polynomial<N>; L],
+    pk1i: [Polynomial<N>; L],
+    ct0is: [Polynomial<N>; L],
+    ct1is: [Polynomial<N>; L],
+    u: Polynomial<N>,
+    e0: Polynomial<N>,
+    e1: Polynomial<N>,
+    k1: Polynomial<N>,
+    r1is: [Polynomial<(2 * N) - 1>; L],
+    r2is: [Polynomial<N - 1>; L],
+    p1is: [Polynomial<(2 * N) - 1>; L],
+    p2is: [Polynomial<N - 1>; L],
 }
 
 impl BfvPkEncryptionCircuit {
-    fn virtual_assign_phase(self) {
-        // TODO: dummy challenge, fix it
-        let inputs = [1, 2, 3, 4];
+
+    pub fn new(
+        pk0i: [Polynomial<N>; L],
+        pk1i: [Polynomial<N>; L],
+        ct0is: [Polynomial<N>; L],
+        ct1is: [Polynomial<N>; L],
+        u: Polynomial<N>,
+        e0: Polynomial<N>,
+        e1: Polynomial<N>,
+        k1: Polynomial<N>,
+        r1is: [Polynomial<2 * N - 1>; L],
+        r2is: [Polynomial<N - 1>; L],
+        p1is: [Polynomial<2 * N - 1>; L],
+        p2is: [Polynomial<N - 1>; L],
+    ) -> BfvPkEncryptionCircuit {
+        BfvPkEncryptionCircuit { pk0i, pk1i, ct0is, ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is }
+    }
+
+    fn payload(self) -> [Field; 24 * N - 8] {
+        let inputs = self.pk0i[0].coefficients.as_slice();
+        let inputs = inputs.append(self.pk0i[1].coefficients.as_slice());
+        let inputs = inputs.append(self.pk1i[0].coefficients.as_slice());
+        let inputs = inputs.append(self.pk1i[1].coefficients.as_slice());
+        let inputs = inputs.append(self.ct0is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.ct0is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.ct1is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.ct1is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.r1is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.r1is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.r2is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.r2is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.p1is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.p1is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.p2is[0].coefficients.as_slice());
+        let inputs = inputs.append(self.p2is[1].coefficients.as_slice());
+        let inputs = inputs.append(self.u.coefficients.as_slice());
+        let inputs = inputs.append(self.e0.coefficients.as_slice());
+        let inputs = inputs.append(self.e1.coefficients.as_slice());
+        let inputs = inputs.append(self.k1.coefficients.as_slice());
+        inputs.as_array()
+    }
+
+    pub fn correct_encryption(self) {
+        let inputs = self.payload();
         let gamma = Poseidon2::hash(inputs, inputs.len());
-        // TODO: cache calculation
         let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
 
         // Bound check
@@ -92,4 +132,165 @@ impl BfvPkEncryptionCircuit {
             assert_eq(lhs, rhs);
         }
     }
+}
+
+#[test]
+fn test() {
+    let pk0i = [
+        Polynomial::new([
+            -1403802783733623,
+            -1805630581469767,
+            1074396299991494,
+            -1191821857299158,
+            232760576561784,
+            2009834201656190,
+            -1712673780202959,
+            222679397902536,
+        ]),
+        Polynomial::new([
+            -823720773323418,
+            1891450372563020,
+            -128745212030841,
+            -441455275386824,
+            -872158998692394,
+            -475552226335370,
+            -90747098345782,
+            -1036800016830931,
+        ]),
+    ];
+    let pk1i = [
+        Polynomial::new([
+            1648718294067155,
+            2245512895797282,
+            -447800124309729,
+            -2111249083329095,
+            2066133022760530,
+            -584869862223593,
+            -842704615493033,
+            142108104908355,
+        ]),
+        Polynomial::new([
+            -291899183447317,
+            795790016923348,
+            1860195844307355,
+            668408031295103,
+            -838693223974419,
+            -625968156329695,
+            608259791953513,
+            1437744972024037,
+        ]),
+    ];
+    let ct0is = [
+        Polynomial::new([
+            -370220263333386,
+            -327862368600833,
+            1884754970694558,
+            2066651122784285,
+            2013216223322597,
+            1229154658621711,
+            1045585492319234,
+            -1489882202557254,
+        ]),
+        Polynomial::new([
+            842538933607836,
+            784279925552216,
+            1527556023823927,
+            -2059593818569710,
+            1102382499342986,
+            -483217896470498,
+            -1750257971413370,
+            -893468153257829,
+        ]),
+    ];
+    let ct1is = [
+        Polynomial::new([
+            776823628252784,
+            2055137419154754,
+            2140462596874717,
+            160113978504870,
+            -135877097553202,
+            1638485724211152,
+            1543584081500201,
+            -2184470657222490,
+        ]),
+        Polynomial::new([
+            -69539390612689,
+            137155248672618,
+            2007797448277144,
+            -1336187492633734,
+            529715659543507,
+            1299911737964247,
+            -2182441341470478,
+            2086132173908181,
+        ]),
+    ];
+    let u = Polynomial::new([3, -4, -5, 3, 0, 1, -1, -3]);
+    let e0 = Polynomial::new([-1, 1, -4, -5, -3, -1, -2, 7]);
+    let e1 = Polynomial::new([-3, -2, 5, -2, 3, 1, 1, -4]);
+    let k1 = Polynomial::new([-1, 1, 1, 0, -1, 0, 0, -1]);
+
+    let r1is = [
+        Polynomial::new([1, 0, -4, 1, 1, -3, 4, -1, -4, 2, -1, 2, 1, -1, 0]),
+        Polynomial::new([1, -2, 1, 3, -1, -1, -2, 1, 1, -1, 0, 0, 0, -1, -1]),
+    ];
+    let r2is = [
+        Polynomial::new([
+            -292191274334620,
+            -198319390525191,
+            549673357620291,
+            -1447293409820005,
+            819704459949298,
+            633843175148384,
+            304055897534219,
+        ]),
+        Polynomial::new([
+            -2032437306351667,
+            37965041661110,
+            -670166366594408,
+            -772999718143301,
+            -963821656991458,
+            1444300343040276,
+            1625631329151772,
+        ]),
+    ];
+    let p1is = [
+        Polynomial::new([-1, 0, 4, 2, -5, 0, 4, -1, 2, 0, -1, 1, 0, 0, 0]),
+        Polynomial::new([0, -1, -1, 2, 3, -1, -3, -1, 3, 3, -1, -1, 0, 0, 1]),
+    ];
+    let p2is = [
+        Polynomial::new([
+            -442555256665976,
+            -141665511123226,
+            554644924312134,
+            1816757098462336,
+            -1100936582861016,
+            -842421660070544,
+            -1758146342497421,
+        ]),
+        Polynomial::new([
+            875697550341951,
+            948632841762609,
+            646676243856663,
+            1283007665658960,
+            -1407477911095363,
+            1080083006414097,
+            1895767463658375,
+        ]),
+    ];
+
+    let bfv = BfvPkEncryptionCircuit::new(
+        pk0i,
+        pk1i,
+        ct0is,
+        ct1is,
+        u,
+        e0,
+        e1,
+        k1,
+        r1is,
+        r2is,
+        p1is,
+        p2is,
+    );
+    bfv.correct_encryption();
 }
