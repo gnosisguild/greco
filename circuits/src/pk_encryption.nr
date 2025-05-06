@@ -40,27 +40,32 @@ impl BfvPkEncryptionCircuit {
     }
 
     fn payload(self) -> [Field; 24 * N - 8] {
-        let inputs = self.pk0i[0].coefficients.as_slice();
-        let inputs = inputs.append(self.pk0i[1].coefficients.as_slice());
-        let inputs = inputs.append(self.pk1i[0].coefficients.as_slice());
-        let inputs = inputs.append(self.pk1i[1].coefficients.as_slice());
-        let inputs = inputs.append(self.ct0is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.ct0is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.ct1is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.ct1is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.r1is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.r1is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.r2is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.r2is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.p1is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.p1is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.p2is[0].coefficients.as_slice());
-        let inputs = inputs.append(self.p2is[1].coefficients.as_slice());
-        let inputs = inputs.append(self.u.coefficients.as_slice());
-        let inputs = inputs.append(self.e0.coefficients.as_slice());
-        let inputs = inputs.append(self.e1.coefficients.as_slice());
-        let inputs = inputs.append(self.k1.coefficients.as_slice());
-        inputs.as_array()
+        let mut inputs = [0; 24 * N - 8];
+        for i in 0..self.pk0i[0].coefficients.len() {
+            inputs[i] = self.pk0i[0].coefficients[i];
+            inputs[i + N] = self.pk0i[1].coefficients[i];
+            inputs[i + 2 * N] = self.ct0is[0].coefficients[i];
+            inputs[i + 3 * N] = self.ct0is[1].coefficients[i];
+            inputs[i + 4 * N] = self.ct1is[0].coefficients[i];
+            inputs[i + 5 * N] = self.ct1is[1].coefficients[i];
+            inputs[i + 6 * N] = self.e0.coefficients[i];
+            inputs[i + 7 * N] = self.e1.coefficients[i];
+            inputs[i + 8 * N] = self.u.coefficients[i];
+            inputs[i + 9 * N] = self.k1.coefficients[i];
+        }
+        for i in 0..self.r1is[0].coefficients.len() {
+            inputs[i + 10 * N - 1] = self.r1is[0].coefficients[i];
+            inputs[i + 11 * N - 1] = self.r1is[1].coefficients[i];
+            inputs[i + 12 * N - 1] = self.p1is[0].coefficients[i];
+            inputs[i + 13 * N - 1] = self.p1is[1].coefficients[i];
+        }
+        for i in 0..self.r2is[0].coefficients.len() {
+            inputs[i + 14 * N - 1] = self.r2is[0].coefficients[i];
+            inputs[i + 16 * N - 1] = self.r2is[1].coefficients[i];
+            inputs[i + 18 * N - 1] = self.p2is[0].coefficients[i];
+            inputs[i + 20 * N - 1] = self.p2is[1].coefficients[i];
+        }
+        inputs
     }
 
     pub fn correct_encryption(self) {
