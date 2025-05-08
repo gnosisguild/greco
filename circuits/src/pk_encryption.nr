@@ -46,31 +46,21 @@ impl BfvPkEncryptionCircuit {
     /// Assigns all the witness polynomial coefficients to an array
     fn payload(self) -> [Field; size] {
         let mut inputs = [0; size];
-        for i in 0..N {
-            inputs[i] = self.pk0is[0].coefficients[i];
-            inputs[i + N] = self.pk0is[1].coefficients[i];
-            inputs[i + 2 * N] = self.ct0is[0].coefficients[i];
-            inputs[i + 3 * N] = self.ct0is[1].coefficients[i];
-            inputs[i + 4 * N] = self.ct1is[0].coefficients[i];
-            inputs[i + 5 * N] = self.ct1is[1].coefficients[i];
-            inputs[i + 6 * N] = self.e0.coefficients[i];
-            inputs[i + 7 * N] = self.e1.coefficients[i];
-            inputs[i + 8 * N] = self.u.coefficients[i];
-            inputs[i + 9 * N] = self.k1.coefficients[i];
-        }
+        let mut offset = 0;
 
-        for i in 0..N - 1 {
-            inputs[i + 10 * N] = self.r2is[0].coefficients[i];
-            inputs[i + 11 * N - 1] = self.r2is[1].coefficients[i];
-            inputs[i + 12 * N - 1] = self.p2is[0].coefficients[i];
-            inputs[i + 13 * N - 1] = self.p2is[1].coefficients[i];
-        }
-        for i in 0..(2 * N) - 1 {
-            inputs[i + 14 * N - 1] = self.r1is[0].coefficients[i];
-            inputs[i + 16 * N - 1] = self.r1is[1].coefficients[i];
-            inputs[i + 18 * N - 1] = self.p1is[0].coefficients[i];
-            inputs[i + 20 * N - 1] = self.p1is[1].coefficients[i];
-        }
+        let (inputs, offset) = flatten(inputs, self.pk0is, offset);
+        let (inputs, offset) = flatten(inputs, self.pk1is, offset);
+        let (inputs, offset) = flatten(inputs, self.ct0is, offset);
+        let (inputs, offset) = flatten(inputs, self.ct1is, offset);
+        let (inputs, offset) = flatten(inputs, [self.e0], offset);
+        let (inputs, offset) = flatten(inputs, [self.e1], offset);
+        let (inputs, offset) = flatten(inputs, [self.u], offset);
+        let (inputs, offset) = flatten(inputs, [self.k1], offset);
+        let (inputs, offset) = flatten(inputs, self.r1is, offset);
+        let (inputs, offset) = flatten(inputs, self.r2is, offset);
+        let (inputs, offset) = flatten(inputs, self.p1is, offset);
+        let (inputs, _offset) = flatten(inputs, self.p2is, offset);
+
         inputs
     }
 
@@ -147,6 +137,21 @@ impl BfvPkEncryptionCircuit {
             assert_eq(lhs, rhs);
         }
     }
+}
+
+fn flatten<let N: u32, let L: u32>(
+    mut inputs: [Field; size],
+    poly: [Polynomial<N>; L],
+    mut offset: u32,
+) -> ([Field; size], u32) {
+    for j in 0..L {
+        for i in 0..N {
+            inputs[i + offset] = poly[j].coefficients[i];
+        }
+        offset += N;
+    }
+
+    (inputs, offset)
 }
 
 #[test]
