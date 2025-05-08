@@ -5,6 +5,10 @@ use super::pk_enc_constants_1024_2x52_2048::{
 use super::polynomial::Polynomial;
 use poseidon::poseidon2::Poseidon2;
 
+// Total size of the all polynomial's coefficients.
+global size: u32 = (10 * L + 4) * N - 8;
+
+/// BfvPkEncryption circuit structure
 pub struct BfvPkEncryptionCircuit {
     pk0i: [Polynomial<N>; L],
     pk1i: [Polynomial<N>; L],
@@ -21,7 +25,7 @@ pub struct BfvPkEncryptionCircuit {
 }
 
 impl BfvPkEncryptionCircuit {
-
+    /// Creates a new circuit
     pub fn new(
         pk0i: [Polynomial<N>; L],
         pk1i: [Polynomial<N>; L],
@@ -39,9 +43,10 @@ impl BfvPkEncryptionCircuit {
         BfvPkEncryptionCircuit { pk0i, pk1i, ct0is, ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is }
     }
 
-    fn payload(self) -> [Field; 24 * N - 8] {
-        let mut inputs = [0; 24 * N - 8];
-        for i in 0..self.pk0i[0].coefficients.len() {
+    /// Assigns all the witness polynomial coefficients to an array
+    fn payload(self) -> [Field; size] {
+        let mut inputs = [0; size];
+        for i in 0..N {
             inputs[i] = self.pk0i[0].coefficients[i];
             inputs[i + N] = self.pk0i[1].coefficients[i];
             inputs[i + 2 * N] = self.ct0is[0].coefficients[i];
@@ -53,24 +58,29 @@ impl BfvPkEncryptionCircuit {
             inputs[i + 8 * N] = self.u.coefficients[i];
             inputs[i + 9 * N] = self.k1.coefficients[i];
         }
-        for i in 0..self.r1is[0].coefficients.len() {
-            inputs[i + 10 * N - 1] = self.r1is[0].coefficients[i];
-            inputs[i + 11 * N - 1] = self.r1is[1].coefficients[i];
-            inputs[i + 12 * N - 1] = self.p1is[0].coefficients[i];
-            inputs[i + 13 * N - 1] = self.p1is[1].coefficients[i];
+
+        for i in 0..N - 1 {
+            inputs[i + 10 * N] = self.r1is[0].coefficients[i];
+            inputs[i + 11 * N] = self.r1is[1].coefficients[i];
+            inputs[i + 12 * N] = self.p1is[0].coefficients[i];
+            inputs[i + 13 * N] = self.p1is[1].coefficients[i];
         }
-        for i in 0..self.r2is[0].coefficients.len() {
-            inputs[i + 14 * N - 1] = self.r2is[0].coefficients[i];
-            inputs[i + 16 * N - 1] = self.r2is[1].coefficients[i];
-            inputs[i + 18 * N - 1] = self.p2is[0].coefficients[i];
-            inputs[i + 20 * N - 1] = self.p2is[1].coefficients[i];
+        for i in 0..(2 * N) - 1 {
+            inputs[i + 14 * N] = self.r2is[0].coefficients[i];
+            inputs[i + 16 * N] = self.r2is[1].coefficients[i];
+            inputs[i + 18 * N] = self.p2is[0].coefficients[i];
+            inputs[i + 20 * N] = self.p2is[1].coefficients[i];
         }
         inputs
     }
 
     pub fn correct_encryption(self) {
+        // TODO: Add domain separation
+        // We assign all the coefficients to an array to generate a challenge value with Poseidon hash function
         let inputs = self.payload();
-        let gamma = Poseidon2::hash(inputs, inputs.len());
+        let gamma = Poseidon2::hash(inputs, size);
+
+        // cyclo poly is equal to x^N + 1
         let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
 
         // Bound check
