@@ -10,8 +10,8 @@ global size: u32 = (10 * L + 4) * N - 8;
 
 /// BfvPkEncryption circuit structure
 pub struct BfvPkEncryptionCircuit {
-    pk0i: [Polynomial<N>; L],
-    pk1i: [Polynomial<N>; L],
+    pk0is: [Polynomial<N>; L],
+    pk1is: [Polynomial<N>; L],
     ct0is: [Polynomial<N>; L],
     ct1is: [Polynomial<N>; L],
     u: Polynomial<N>,
@@ -27,8 +27,8 @@ pub struct BfvPkEncryptionCircuit {
 impl BfvPkEncryptionCircuit {
     /// Creates a new circuit
     pub fn new(
-        pk0i: [Polynomial<N>; L],
-        pk1i: [Polynomial<N>; L],
+        pk0is: [Polynomial<N>; L],
+        pk1is: [Polynomial<N>; L],
         ct0is: [Polynomial<N>; L],
         ct1is: [Polynomial<N>; L],
         u: Polynomial<N>,
@@ -40,15 +40,15 @@ impl BfvPkEncryptionCircuit {
         p1is: [Polynomial<2 * N - 1>; L],
         p2is: [Polynomial<N - 1>; L],
     ) -> BfvPkEncryptionCircuit {
-        BfvPkEncryptionCircuit { pk0i, pk1i, ct0is, ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is }
+        BfvPkEncryptionCircuit { pk0is, pk1is, ct0is, ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is }
     }
 
     /// Assigns all the witness polynomial coefficients to an array
     fn payload(self) -> [Field; size] {
         let mut inputs = [0; size];
         for i in 0..N {
-            inputs[i] = self.pk0i[0].coefficients[i];
-            inputs[i + N] = self.pk0i[1].coefficients[i];
+            inputs[i] = self.pk0is[0].coefficients[i];
+            inputs[i + N] = self.pk0is[1].coefficients[i];
             inputs[i + 2 * N] = self.ct0is[0].coefficients[i];
             inputs[i + 3 * N] = self.ct0is[1].coefficients[i];
             inputs[i + 4 * N] = self.ct1is[0].coefficients[i];
@@ -60,16 +60,16 @@ impl BfvPkEncryptionCircuit {
         }
 
         for i in 0..N - 1 {
-            inputs[i + 10 * N] = self.r1is[0].coefficients[i];
-            inputs[i + 11 * N] = self.r1is[1].coefficients[i];
-            inputs[i + 12 * N] = self.p1is[0].coefficients[i];
-            inputs[i + 13 * N] = self.p1is[1].coefficients[i];
+            inputs[i + 10 * N] = self.r2is[0].coefficients[i];
+            inputs[i + 11 * N - 1] = self.r2is[1].coefficients[i];
+            inputs[i + 12 * N - 1] = self.p2is[0].coefficients[i];
+            inputs[i + 13 * N - 1] = self.p2is[1].coefficients[i];
         }
         for i in 0..(2 * N) - 1 {
-            inputs[i + 14 * N] = self.r2is[0].coefficients[i];
-            inputs[i + 16 * N] = self.r2is[1].coefficients[i];
-            inputs[i + 18 * N] = self.p2is[0].coefficients[i];
-            inputs[i + 20 * N] = self.p2is[1].coefficients[i];
+            inputs[i + 14 * N - 1] = self.r1is[0].coefficients[i];
+            inputs[i + 16 * N - 1] = self.r1is[1].coefficients[i];
+            inputs[i + 18 * N - 1] = self.p1is[0].coefficients[i];
+            inputs[i + 20 * N - 1] = self.p1is[1].coefficients[i];
         }
         inputs
     }
@@ -90,8 +90,8 @@ impl BfvPkEncryptionCircuit {
         self.k1.range_check_2bounds(K1_UP_BOUND, K1_LOW_BOUND);
 
         for i in 0..L {
-            self.pk0i[i].range_check_1bound(PK_BOUND[i]);
-            self.pk1i[i].range_check_1bound(PK_BOUND[i]);
+            self.pk0is[i].range_check_1bound(PK_BOUND[i]);
+            self.pk1is[i].range_check_1bound(PK_BOUND[i]);
             self.r1is[i].range_check_2bounds(R1_UP_BOUNDS[i], R1_LOW_BOUNDS[i]);
             self.r2is[i].range_check_1bound(R2_BOUNDS[i]);
             self.p1is[i].range_check_1bound(P1_BOUNDS[i]);
@@ -103,22 +103,22 @@ impl BfvPkEncryptionCircuit {
         let e0_at_gamma = self.e0.eval(gamma);
         let e1_at_gamma = self.e1.eval(gamma);
         let k1_at_gamma = self.k1.eval(gamma);
-        let pk0i_at_gamma = self.pk0i.map(|pk| pk.eval(gamma));
-        let pk1i_at_gamma = self.pk1i.map(|pk| pk.eval(gamma));
+        let pk0is_at_gamma = self.pk0is.map(|pk| pk.eval(gamma));
+        let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
         let r1i_at_gamma = self.r1is.map(|r1| r1.eval(gamma));
         let r2i_at_gamma = self.r2is.map(|r2| r2.eval(gamma));
         let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
         let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
 
         // For each `i` Prove that LHS(gamma) = RHS(gamma)
-        // pk0_u = pk0i(gamma) * u(gamma) + e0(gamma)
+        // pk0_u = pk0is(gamma) * u(gamma) + e0(gamma)
         // LHS = ct0i(gamma)
         // RHS = pk0_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
 
         // CORRECT ENCRYPTION CONSTRAINT
         for i in 0..L {
             // First step
-            let pk0_u = (pk0i_at_gamma[i] * u_at_gamma) + e0_at_gamma;
+            let pk0_u = (pk0is_at_gamma[i] * u_at_gamma) + e0_at_gamma;
 
             // rhs = pk0_u + k1(gamma) * k0i
             let rhs = pk0_u + (k1_at_gamma * K0IS[i]);
@@ -134,7 +134,7 @@ impl BfvPkEncryptionCircuit {
             assert_eq(lhs, rhs);
 
             // Second step
-            let pk1_u = (pk1i_at_gamma[i] * u_at_gamma) + e1_at_gamma;
+            let pk1_u = (pk1is_at_gamma[i] * u_at_gamma) + e1_at_gamma;
 
             //rhs = pk1_u + p2i * cyclo(gamma)
             let rhs = pk1_u + p2is_at_gamma[i] * cyclo_at_gamma;
@@ -151,7 +151,7 @@ impl BfvPkEncryptionCircuit {
 
 #[test]
 fn test() {
-    let pk0i = [
+    let pk0is = [
         Polynomial::new([
             -1403802783733623,
             -1805630581469767,
@@ -173,7 +173,7 @@ fn test() {
             -1036800016830931,
         ]),
     ];
-    let pk1i = [
+    let pk1is = [
         Polynomial::new([
             1648718294067155,
             2245512895797282,
@@ -294,8 +294,8 @@ fn test() {
     ];
 
     let bfv = BfvPkEncryptionCircuit::new(
-        pk0i,
-        pk1i,
+        pk0is,
+        pk1is,
         ct0is,
         ct1is,
         u,
