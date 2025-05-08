@@ -719,7 +719,10 @@ impl InputValidationBounds {
 
         // Writing the constants to the file
         writeln!(file, "/// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.")?;
-        writeln!(file, "pub global N: u64 = {};", params.degree())?;
+        writeln!(file, "pub global N: u32 = {};", params.degree())?;
+
+        writeln!(file, "/// `L` is the dimension size of the polynomials. ")?;
+        writeln!(file, "pub global L: u32 = {};", self.pk.len())?;
 
         let pk_bound_str = self
             .pk
@@ -932,18 +935,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Write out files ----------------------------------------------------------------------
     let output_path = Path::new("scripts").join("pk_enc_data");
 
-    // Generate filename and write file
-    let filename = format!(
-        "pk_enc_{}_{}x{}_{}.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
+    // Generates Prover toml file
+    let prover_data = to_prover_toml_format(&res.standard_form(&p));
+    let toml_string = toml::to_string_pretty(&prover_data).expect("Failed to serialize TOML");
 
     std::fs::create_dir_all(&output_path).expect("Unable to create output directory");
+    let file_path = output_path.join("Prover.toml");
+    std::fs::write(file_path, toml_string).expect("Failed to write TOML file");
 
-    write_json_to_file(&output_path, &filename, &json_data);
+    let zeroes = InputValidationVectors::new(moduli.len(), params.degree());
+    let zeroes_data = to_prover_toml_format(&zeroes);
+    let zeroes_toml = toml::to_string_pretty(&zeroes_data).expect("Failed to serialize TOML");
+
+    let file_path_zeroes = output_path.join("Prover0.toml");
+    std::fs::write(file_path_zeroes, zeroes_toml).expect("Failed to write zeroes TOML");
 
     // Generate zeros filename and write file
     let filename_zeroes = format!(
@@ -992,4 +997,60 @@ fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json
     let mut file = File::create(file_path).expect("Unable to create file");
     file.write_all(serde_json::to_string_pretty(json_data).unwrap().as_bytes())
         .expect("Unable to write data");
+}
+
+#[derive(serde::Serialize)]
+struct ProverVectorsTable {
+    coefficients: Vec<String>,
+}
+
+#[derive(serde::Serialize)]
+struct ProverTomlFormat {
+    ct0is: Vec<ProverVectorsTable>,
+    ct1is: Vec<ProverVectorsTable>,
+    pk0is: Vec<ProverVectorsTable>,
+    pk1is: Vec<ProverVectorsTable>,
+    r1is: Vec<ProverVectorsTable>,
+    r2is: Vec<ProverVectorsTable>,
+    p1is: Vec<ProverVectorsTable>,
+    p2is: Vec<ProverVectorsTable>,
+
+    u: ProverVectorsTable,
+    e0: ProverVectorsTable,
+    e1: ProverVectorsTable,
+    k1: ProverVectorsTable,
+}
+
+fn to_prover_toml_format(vecs: &InputValidationVectors) -> ProverTomlFormat {
+    let wrap = |v: &Vec<Vec<BigInt>>| {
+        v.iter()
+            .map(|row| ProverVectorsTable {
+                coefficients: to_string_1d_vec(row),
+            })
+            .collect()
+    };
+
+    ProverTomlFormat {
+        ct0is: wrap(&vecs.ct0is),
+        ct1is: wrap(&vecs.ct1is),
+        pk0is: wrap(&vecs.pk0is),
+        pk1is: wrap(&vecs.pk1is),
+        r1is: wrap(&vecs.r1is),
+        r2is: wrap(&vecs.r2is),
+        p1is: wrap(&vecs.p1is),
+        p2is: wrap(&vecs.p2is),
+
+        u: ProverVectorsTable {
+            coefficients: to_string_1d_vec(&vecs.u),
+        },
+        e0: ProverVectorsTable {
+            coefficients: to_string_1d_vec(&vecs.e0),
+        },
+        e1: ProverVectorsTable {
+            coefficients: to_string_1d_vec(&vecs.e1),
+        },
+        k1: ProverVectorsTable {
+            coefficients: to_string_1d_vec(&vecs.k1),
+        },
+    }
 }
