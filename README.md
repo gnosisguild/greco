@@ -25,7 +25,7 @@ The Noir circuit requires structured input values in a TOML format. These values
 
 To generate these inputs, we use a Rust program provided in this repository. This program mimics the BFV encryption process and outputs all the necessary values in a Noir-compatible format.
 
-- In [rs-script](https://github.com/gnosisguild/greco/tree/noir/rs-script) run cargo with `cargo run` command to generate inputs.
+- In [rs-script](https://github.com/gnosisguild/greco/tree/noir/rs-script) run cargo with `cargo run` command to generate inputs and constants.
 
 - Put `pk_enc_constants_1024_2x52_2048.nr` file generated in `scripts/constants/pk_enc_constants` into the [circuits/src](https://github.com/gnosisguild/greco/tree/noir/circuits/src).
 
@@ -46,7 +46,7 @@ To generate these inputs, we use a Rust program provided in this repository. Thi
  4. `bb verify -k ./target/vk -p ./target/proof`
  Verify the proof.
 
-To create a solidity contract follow this command at the `3.` step:
+To create a Solidity contract follow this command after the `2.` step:
 
 3. **`bb write_vk -b ./target/new_project_name.json -o ./target --oracle_hash keccak`** --- Generate the verification key. Need to pass the `--oracle_hash keccak` flag when generating vkey and proving to instruct bb to use keccak as the hash function which is more optimal in Solidity
 

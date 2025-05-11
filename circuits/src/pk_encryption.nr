@@ -73,7 +73,7 @@ impl BfvPkEncryptionCircuit {
         // cyclo poly is equal to x^N + 1
         let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
 
-        // Bound check
+        // Bound checks
         self.u.range_check_1bound(U_BOUND);
         self.e0.range_check_1bound(E_BOUND);
         self.e1.range_check_1bound(E_BOUND);
@@ -139,6 +139,11 @@ impl BfvPkEncryptionCircuit {
     }
 }
 
+/// Flattens a 2D array of `Polynomial<N>` into a 1D `inputs` array of `Field` elements.
+/// # Example
+/// ```rust
+/// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
+/// ```
 fn flatten<let N: u32, let L: u32>(
     mut inputs: [Field; size],
     poly: [Polynomial<N>; L],
@@ -155,7 +160,8 @@ fn flatten<let N: u32, let L: u32>(
 }
 
 // #[test]
-// fn test() {
+// // Test case for correct ecnryption function with small Polynomials
+// fn correct_enc_test() {
 //     let pk0is = [
 //         Polynomial::new([
 //             -1403802783733623,
