@@ -16,7 +16,8 @@ This repo includes:
 
 ## Requirements
 
-- [Noirup (for installing Noir)](https://noir-lang.org/getting-started/installation/)
+- [Noirup (for installing Noir)](https://noir-lang.org/docs/getting_started/quick_start#noir)
+- [BBup (for installing Barretenberg)](https://noir-lang.org/docs/getting_started/quick_start#proving-backend)
 - [Rust toolchain](https://rustup.rs/)
 - `nargo` (installed automatically via `noirup`)
 
@@ -28,15 +29,59 @@ The Noir circuit requires structured input values in a TOML format. These values
 
 To generate these inputs, we use a Rust program provided in this repository. This program mimics the BFV encryption process and outputs all necessary values in a Noir-compatible format.
 
+- Copy Greco files into a new file. Lets name it as Noir-Greco
 - In the [rs-script](https://github.com/gnosisguild/greco/tree/noir/rs-script) folder, run `cargo run` to generate inputs and constants.
-- Copy the `pk_enc_constants_1024_2x52_2048.nr` file generated in `scripts/constants/pk_enc_constants` into the [circuits/src](https://github.com/gnosisguild/greco/tree/noir/circuits/src) directory.
-- Create a new Noir project using `nargo new`.
-- Use the `Prover.toml` file (generated in `rs-script/scripts/pk_enc_data`) as input to the circuit.
+- Copy the `pk_enc_constants_1024_2x52_2048.nr` file generated in `greco/rs-script/scripts/constants/pk_enc_constants` into the [greco/circuits/src](https://github.com/gnosisguild/greco/tree/noir/circuits/src) directory.
+- Create a new Noir project by using command below in Noir-Greco folder
+   ```rust
+   nargo new <new_project_name>
+   ```
+   This command will create two files,
+
+   `Noir-Greco/<new_project_name>/src/main.nr`
+
+   `Noir-Greco/<new_project_name>/Nargo.toml`
+- Open Nargo.toml and add this path to the dependency
+   ```rust
+   [dependencies]
+   circuits = { path = "../greco/circuits", type = "lib" }
+   ```
 - In `main.nr`, call the `correct_encryption` function and pass public and private inputs directly in the function signature, for example:
 
-```rust
-fn main(pub pk0is, pub pk1is, pub ct0is, pub ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is)
-```
+   ```rust
+   fn main(
+      pub pk0is: [Polynomial<N>; L],
+      pub pk1is: [Polynomial<N>; L],
+      pub ct0is: [Polynomial<N>; L],
+      pub ct1is: [Polynomial<N>; L],
+      u: Polynomial<N>,
+      e0: Polynomial<N>,
+      e1: Polynomial<N>,
+      k1: Polynomial<N>,
+      r1is: [Polynomial<(2 * N) - 1>; L],
+      r2is: [Polynomial<N - 1>; L],
+      p1is: [Polynomial<(2 * N) - 1>; L],
+      p2is: [Polynomial<N - 1>; L]
+   )  {
+      let circuit = BfvPkEncryptionCircuit::new(
+         pk0is,
+         pk1is,
+         ct0is,
+         ct1is,
+         u,
+         e0,
+         e1,
+         k1,
+         r1is,
+         r2is,
+         p1is,
+         p2is
+      );
+      circuit.correct_encryption();
+   }
+   ```
+
+- Move `Prover.toml` file (generated in `greco/rs-script/scripts/pk_enc_data` as input to the circuit) to the `Noir-Greco/<new_project_name>`.
 
 ---
 
