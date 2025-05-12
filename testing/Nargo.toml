@@ -1,0 +1,8 @@
+[package]
+name = "testing"
+type = "bin"
+authors = [""]
+
+[dependencies]
+circuits = { path = "../circuits", type = "lib" }
+

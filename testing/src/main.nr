@@ -1,0 +1,41 @@
+use dep::circuits::pk_encryption::{BfvPkEncryptionCircuit, Polynomial};
+use dep::circuits::pk_enc_constants_1024_2x52_2048::{N, L};
+fn main(
+    pk0is: [Polynomial<N>; L],
+    pk1is: [Polynomial<N>; L],
+    ct0is: [Polynomial<N>; L],
+    ct1is: [Polynomial<N>; L],
+    u: Polynomial<N>,
+    e0: Polynomial<N>,
+    e1: Polynomial<N>,
+    k1: Polynomial<N>,
+    r1is: [Polynomial<(2 * N) - 1>; L],
+    r2is: [Polynomial<N - 1>; L],
+    p1is: [Polynomial<(2 * N) - 1>; L],
+    p2is: [Polynomial<N - 1>; L]
+) {
+    let circuit = BfvPkEncryptionCircuit::new(
+        pk0is,
+        pk1is,
+        ct0is,
+        ct1is,
+        u,
+        e0,
+        e1,
+        k1,
+        r1is,
+        r2is,
+        p1is,
+        p2is
+    );
+    circuit.correct_encryption();
+}
+
+#[test]
+fn test_main() {
+    // TODO: Add test data
+    // main(1, 2);
+
+    // Uncomment to make test fail
+    // main(1, 1);
+}

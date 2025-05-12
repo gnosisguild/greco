@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Noir Proof Generation and Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+            display: block !important; /* Force display */
+            min-height: 20px; /* Ensure minimum height */
+            border: 1px solid #ccc; /* Add border to make it more visible */
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Noir Proof Generation and Verification</h1>
+    <button id="generateBtn">Generate Proof</button>
+    <button id="verifyBtn">Verify Proof</button>
+    <div id="status">Ready to generate and verify proof</div>
+    <script type="module" src="web-interface.ts"></script>
+</body>
+</html> 
