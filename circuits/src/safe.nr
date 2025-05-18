@@ -5,56 +5,53 @@ use std::hash::poseidon2_permutation;
 global RATE: u32 = 4;
 global CAPACITY: u32 = 1;
 global WIDTH: u32 = 5;
-global ABSORB_MASK: u32 = 0x80000_0000;
+global ABSORB_MASK: i64 = 0x80000_0000;
 
-pub enum Pattern {
-    Absorb(u32),
-    Squeeze(u32),
-}
+fn tag_input<let L: u32>(pattern: [i32; L], domain_sep: Field) -> [Field] {
+    // TODO: discuss this approach, since we dont have enums negative values are squeeze and positives are absorb. This approach is not safe
+    // Also we have to check that each call should be smaller than 2^31 bits, that is why we are using i32 here.
+    assert(pattern[0] > 0);
+    assert(pattern[L] < 0);
 
-impl Pattern {
-    pub fn length(self) -> u32 {
-        match self {
-            Pattern::Absorb(len) => len,
-            Pattern::Squeeze(len) => len,
+    let mut inputs = [0; L + 2];
+    inputs[0] = ABSORB_MASK;
+
+    for i in 0..pattern.len() {
+        let mut prev = inputs[i];
+        let value = pattern[i] as i64;
+
+        if value > 0 {
+            if prev & ABSORB_MASK != 0 {
+                prev += value;
+            }
+
+            inputs[i] = ABSORB_MASK + value;
         }
-    }
-}
-
-fn tag_input<let L: u32>(pattern: [Pattern; L], domain_sep: u32) -> Vec<u32>{
-    assert(pattern[0] == Pattern::Absorb(_));
-    assert(pattern[L] == Pattern::Squeeze(_));
-    let mut input = Vec::new();
-    input.push(ABSORB_MASK);
-
-    for i in 0..pattern.len(){
-        let l = input.len();
-        let mut prev = input.get(l - 1);
-
-        match pattern {
-            Pattern::Absorb(len) => if prev & ABSORB_MASK != 0 { prev += len; },
-            Pattern::Absorb(len) => input.push(ABSORB_MASK + len),
-            Pattern::Squeeze(len) => if prev & ABSORB_MASK == 0 { prev += len; },
-            Pattern::Squeeze(len) => input.push(len),
+        if value > 0 {
+            if prev & ABSORB_MASK == 0 {
+                prev += value;
+            }
+            inputs[i] = value;
         }
     }
 
-    input.push(domain_sep);
+    let mut inputs = inputs.map(|i| i as Field);
+    inputs[L + 2] = domain_sep;
+    inputs
 }
-
 
 struct SafeSponge<let L: u32> {
     state: [Field; WIDTH],
     absorb_pos: u32,
     squeeze_pos: u32,
     // expected IO pattern (compact 32-bit words)
-    io_pattern: [u32; L],
+    io_pattern: [i32; L],
     io_count: u32,
 }
 
 impl<let L: u32> SafeSponge<L> {
-    pub fn start(pattern: [u32; L], domain_sep: Field) -> SafeSponge<L> {
-        let mut tag = hash_to_field(pattern.map(|x| x as Field));
+    pub fn start(pattern: [i32; L], domain_sep: Field) -> SafeSponge<L> {
+        let mut tag = hash_to_field(tag_input(pattern, domain_sep));
         tag = tag + domain_sep;
 
         let mut sponge = SafeSponge::<L> {
