@@ -1,6 +1,6 @@
 /// `N` is the degree of the cyclotomic polynomial defining the ring `Rq = Zq[X]/(X^N + 1)`.
 pub global N: u32 = 1024;
-/// `L` is the dimension size of the polynomials. 
+/// `L` is the dimension size of the polynomials.
 pub global L: u32 = 2;
 /// The coefficients of the polynomial `pk0is` and `pk1is` should exist in the interval `[-PK_BOUND, PK_BOUND]`.
 pub global PK_BOUND: [u64; 2] = [2251799812767744, 2251799813160960];
@@ -24,3 +24,5 @@ pub global K1_UP_BOUND: u64 = 1023;
 pub global QIS: [Field; 2] = [4503599625535489, 4503599626321921];
 /// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.
 pub global K0IS: [Field; 2] = [2199023254656, 2199023255040];
+/// Constant value for the SAFE sponge algorithm
+pub global TAG: Field = 1;

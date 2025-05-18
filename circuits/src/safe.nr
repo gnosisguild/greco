@@ -1,44 +1,10 @@
+use super::pk_enc_constants_1024_2x52_2048::TAG;
 use poseidon::poseidon::bn254::hash_2;
-use std::hash::hash_to_field;
 use std::hash::poseidon2_permutation;
 
 global RATE: u32 = 4;
 global CAPACITY: u32 = 1;
 global WIDTH: u32 = 5;
-global ABSORB_MASK: i64 = 0x80000_0000;
-
-fn tag_input<let L: u32>(pattern: [i32; L], domain_sep: Field) -> [Field] {
-    // TODO: discuss this approach, since we dont have enums negative values are squeeze and positives are absorb. This approach is not safe
-    // Also we have to check that each call should be smaller than 2^31 bits, that is why we are using i32 here.
-    assert(pattern[0] > 0);
-    assert(pattern[L] < 0);
-
-    let mut inputs = [0; L + 2];
-    inputs[0] = ABSORB_MASK;
-
-    for i in 0..pattern.len() {
-        let mut prev = inputs[i];
-        let value = pattern[i] as i64;
-
-        if value > 0 {
-            if prev & ABSORB_MASK != 0 {
-                prev += value;
-            }
-
-            inputs[i] = ABSORB_MASK + value;
-        }
-        if value > 0 {
-            if prev & ABSORB_MASK == 0 {
-                prev += value;
-            }
-            inputs[i] = value;
-        }
-    }
-
-    let mut inputs = inputs.map(|i| i as Field);
-    inputs[L + 2] = domain_sep;
-    inputs
-}
 
 struct SafeSponge<let L: u32> {
     state: [Field; WIDTH],
@@ -50,10 +16,7 @@ struct SafeSponge<let L: u32> {
 }
 
 impl<let L: u32> SafeSponge<L> {
-    pub fn start(pattern: [i32; L], domain_sep: Field) -> SafeSponge<L> {
-        let mut tag = hash_to_field(tag_input(pattern, domain_sep));
-        tag = tag + domain_sep;
-
+    pub fn start(pattern: [i32; L]) -> SafeSponge<L> {
         let mut sponge = SafeSponge::<L> {
             state: [0; WIDTH],
             absorb_pos: 0,
@@ -61,12 +24,14 @@ impl<let L: u32> SafeSponge<L> {
             io_pattern: pattern,
             io_count: 0,
         };
-        sponge.state[0] = tag;
+        sponge.state[0] = TAG;
         sponge
     }
 
     pub fn absorb<let S: u32>(mut self, input: [Field; S]) {
-        for i in 0..S {
+        assert(self.io_pattern[self.io_count] > 0);
+
+        for i in 0..self.io_pattern[self.io_count] {
             if self.absorb_pos == RATE {
                 //TODO: check
                 self.state = poseidon_permutation(self.state);
@@ -82,8 +47,9 @@ impl<let L: u32> SafeSponge<L> {
     }
 
     pub fn squeeze<let S: u32>(mut self) -> [Field; S] {
+        assert(self.io_pattern[self.io_count] < 0);
         let mut out = [0; S];
-        for i in 0..S {
+        for i in 0..self.io_pattern[self.io_count] {
             if self.squeeze_pos == RATE {
                 self.state = poseidon2_permutation(self.state, self.state.len());
                 self.squeeze_pos = 0;
