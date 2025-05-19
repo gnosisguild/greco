@@ -50,10 +50,10 @@ To generate these inputs, we use a Rust program provided in this repository. Thi
 
    ```rust
    fn main(
-      pub pk0is: [Polynomial<N>; L],
-      pub pk1is: [Polynomial<N>; L],
-      pub ct0is: [Polynomial<N>; L],
-      pub ct1is: [Polynomial<N>; L],
+      pk0is: pub [Polynomial<N>; L],
+      pk1is: pub [Polynomial<N>; L],
+      ct0is: pub [Polynomial<N>; L],
+      ct1is: pub [Polynomial<N>; L],
       u: Polynomial<N>,
       e0: Polynomial<N>,
       e1: Polynomial<N>,
