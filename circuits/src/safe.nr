@@ -5,7 +5,7 @@ global RATE: u32 = 2;
 global CAPACITY: u32 = 1;
 global WIDTH: u32 = 4;
 
-struct SafeSponge<let L: u32, let S: u32> {
+pub struct SafeSponge<let L: u32, let S: u32> {
     state: [Field; WIDTH],
     absorb_pos: u32,
     squeeze_pos: u32,

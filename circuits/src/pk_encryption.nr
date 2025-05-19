@@ -3,7 +3,7 @@ use super::pk_enc_constants_1024_2x52_2048::{
     R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, U_BOUND,
 };
 use super::polynomial::Polynomial;
-use poseidon::poseidon2::Poseidon2;
+use super::safe::SafeSponge;
 
 // Total size of the all polynomial's coefficients.
 global size: u32 = (10 * L + 4) * N - 8;
@@ -66,9 +66,12 @@ impl BfvPkEncryptionCircuit {
 
     pub fn correct_encryption(self) {
         // TODO: Add domain separation
-        // We assign all the coefficients to an array to generate a challenge value with Poseidon hash function
+        // We assign all the coefficients to an array to generate a challenge value
         let inputs = self.payload();
-        let gamma = Poseidon2::hash(inputs, size);
+        let mut safe = SafeSponge::start([24568, -1]);
+        safe = safe.absorb(inputs);
+        let gamma = safe.squeeze();
+        safe.finish();
 
         // cyclo poly is equal to x^N + 1
         let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
