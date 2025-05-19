@@ -28,7 +28,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 
     pub fn absorb(mut self, input: [Field; S]) -> SafeSponge<L, S> {
         assert(self.io_pattern[self.io_count] > 0);
-        assert(self.io_pattern[self.io_count] as u32 == input.len());
+        assert(self.io_pattern[self.io_count] as u32 == S);
 
         for i in 0..self.io_pattern[self.io_count] {
             if self.absorb_pos == RATE {
@@ -62,7 +62,6 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
     }
 
     pub fn finish(mut self) {
-        assert(self.io_count == self.io_pattern.len());
         // Clear the state
         self.state = [0; WIDTH];
         self.io_count = 0;
@@ -78,5 +77,6 @@ fn test_safe() {
     let mut safe = SafeSponge::start(pattern);
     safe = safe.absorb([1, 2, 3, 4, 5]);
     let res = safe.squeeze();
+    safe.finish();
     assert_eq(res, 0x261007ad6fed700ec20bfc988556ed9e9fbf84fdca7eaeec3eb644100ffbfb83);
 }
