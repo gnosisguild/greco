@@ -24,5 +24,6 @@ pub global K1_UP_BOUND: u64 = 1023;
 pub global QIS: [Field; 2] = [4503599625535489, 4503599626321921];
 /// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.
 pub global K0IS: [Field; 2] = [2199023254656, 2199023255040];
-/// Constant value for the SAFE sponge algorithm
-pub global TAG: Field = 1;
+/// Constant value for the SAFE sponge algorithm.
+pub global TAG: Field =
+    21051423426588934909977601587247887697444654877805461481653239647430244534143;

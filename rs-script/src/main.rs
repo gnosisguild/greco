@@ -1,5 +1,6 @@
 mod poly;
 
+use blake3::Hasher;
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
 };
@@ -10,18 +11,18 @@ use fhe_math::{
 use fhe_traits::*;
 use itertools::izip;
 
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use num_traits::{Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
+use std::{fs::File, str::FromStr};
 
 use poly::*;
 
@@ -832,6 +833,32 @@ impl InputValidationBounds {
             k0i_constants.len(),
             k0i_constants
         )?;
+
+        let pk_bound_u64 = self
+            .pk
+            .iter()
+            .map(|x| x.to_u64().unwrap())
+            .collect::<Vec<u64>>();
+
+        let mut hasher = Hasher::new();
+        hasher.update(params.degree().to_le_bytes().as_slice());
+        hasher.update(self.pk.len().to_le_bytes().as_slice());
+        hasher.update(
+            &pk_bound_u64
+                .iter()
+                .flat_map(|num| num.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        hasher.update(
+            &ctx.moduli()
+                .iter()
+                .flat_map(|num| num.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        let domain_seperator = BigInt::from_bytes_le(Sign::Plus, hasher.finalize().as_bytes());
+
+        writeln!(file, "/// Constant value for the SAFE sponge algorithm.")?;
+        writeln!(file, "pub global TAG: Field = {:?};", domain_seperator)?;
 
         Ok(())
     }
