@@ -68,7 +68,7 @@ impl BfvPkEncryptionCircuit {
         // TODO: Add domain separation
         // We assign all the coefficients to an array to generate a challenge value
         let inputs = self.payload();
-        let mut safe = SafeSponge::start([24568, -1]);
+        let mut safe = SafeSponge::start([size, -1]);
         safe = safe.absorb(inputs);
         let gamma = safe.squeeze();
         safe.finish();
