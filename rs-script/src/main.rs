@@ -9,10 +9,10 @@ use fhe_math::{
     zq::Modulus,
 };
 use fhe_traits::*;
-use itertools::izip;
+use itertools::{izip, Itertools};
 
-use num_bigint::{BigInt, Sign};
-use num_traits::{Num, Signed, ToPrimitive, Zero};
+use num_bigint::{BigInt, BigUint, Sign};
+use num_traits::{FromPrimitive, Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{ParallelBridge, ParallelIterator};
@@ -855,10 +855,20 @@ impl InputValidationBounds {
                 .flat_map(|num| num.to_le_bytes())
                 .collect::<Vec<u8>>(),
         );
-        let domain_seperator = BigInt::from_bytes_le(Sign::Plus, hasher.finalize().as_bytes());
+        let _domain_seperator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
+        let size = 10 * (self.pk.len() + 4) * params.degree() - 8;
+        let io_pattern = [
+            BigUint::from_usize(size).unwrap(),
+            BigUint::from_usize(1).unwrap(),
+        ]
+        .map(|x| x.to_bytes_le());
+        hasher.update(io_pattern[0].as_slice());
+        hasher.update(io_pattern[1].as_slice());
+
+        let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes()) % ctx.modulus().clone();
 
         writeln!(file, "/// Constant value for the SAFE sponge algorithm.")?;
-        writeln!(file, "pub global TAG: Field = {:?};", domain_seperator)?;
+        writeln!(file, "pub global TAG: Field = {:?};", tag)?;
 
         Ok(())
     }
