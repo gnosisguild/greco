@@ -45,6 +45,7 @@ impl<let N: u32> Polynomial<N> {
 }
 
 #[test]
+// Tests single bound check and double bounds check with a small Polynomial
 fn test_polynomial_bounds() {
     let mut coeffs = [-16, 240, 242];
 
@@ -54,6 +55,7 @@ fn test_polynomial_bounds() {
 }
 
 #[test]
+// Tests polynomial evaluation on a random small number
 fn test_polynomial_eval() {
     let mut coeffs = [1, 2, 3];
     let mut poly = Polynomial::new(coeffs);
