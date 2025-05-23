@@ -981,17 +981,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file_path = output_path.join("Prover.toml");
     std::fs::write(file_path, toml_string).expect("Failed to write TOML file");
 
-    // Generate zeros filename and write file
-    let filename_zeroes = format!(
-        "pk_enc_{}_{}x{}_{}_zeroes.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    let zeroes_json = InputValidationVectors::new(moduli.len(), params.degree()).to_json();
-    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
-
     let filename_constants = format!(
         "pk_enc_constants_{}_{}x{}_{}.nr",
         N,
