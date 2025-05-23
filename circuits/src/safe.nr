@@ -1,7 +1,7 @@
 use super::pk_enc_constants_1024_2x52_2048::TAG;
 use poseidon::poseidon2_permutation;
 
-global RATE: u32 = 2;
+global RATE: u32 = 3;
 global CAPACITY: u32 = 1;
 global WIDTH: u32 = 4;
 
@@ -54,8 +54,8 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
                 self.squeeze_pos = 0;
                 self.absorb_pos = 0;
             }
-            self.squeeze_pos += 1;
             out = out + self.state[self.squeeze_pos + CAPACITY];
+            self.squeeze_pos += 1;
         }
         self.io_count += 1;
         out
@@ -78,5 +78,5 @@ fn test_safe() {
     safe = safe.absorb([1, 2, 3, 4, 5]);
     let res = safe.squeeze();
     safe.finish();
-    assert_eq(res, 0x261007ad6fed700ec20bfc988556ed9e9fbf84fdca7eaeec3eb644100ffbfb83);
+    assert_eq(res, 0x13cc936c31fad32eb44495726664b0c5bfe83507fcd5c68e9aeb8aebe77bcbd5);
 }

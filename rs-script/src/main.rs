@@ -865,6 +865,7 @@ impl InputValidationBounds {
         hasher.update(io_pattern[0].as_slice());
         hasher.update(io_pattern[1].as_slice());
 
+        // TODO: Match the TAG calculation with the one in SAFE
         let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes()) % ctx.modulus().clone();
 
         writeln!(file, "/// Constant value for the SAFE sponge algorithm.")?;
@@ -979,13 +980,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&output_path).expect("Unable to create output directory");
     let file_path = output_path.join("Prover.toml");
     std::fs::write(file_path, toml_string).expect("Failed to write TOML file");
-
-    let zeroes = InputValidationVectors::new(moduli.len(), params.degree());
-    let zeroes_data = to_prover_toml_format(&zeroes);
-    let zeroes_toml = toml::to_string_pretty(&zeroes_data).expect("Failed to serialize TOML");
-
-    let file_path_zeroes = output_path.join("Prover0.toml");
-    std::fs::write(file_path_zeroes, zeroes_toml).expect("Failed to write zeroes TOML");
 
     // Generate zeros filename and write file
     let filename_zeroes = format!(
