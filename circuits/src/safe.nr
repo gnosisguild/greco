@@ -7,6 +7,7 @@ global WIDTH: u32 = 4;
 
 pub struct SafeSponge<let L: u32, let S: u32> {
     state: [Field; WIDTH],
+    out: Vec<Field>,
     absorb_pos: u32,
     squeeze_pos: u32,
     io_pattern: [i32; L],
@@ -17,6 +18,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
     pub fn start(pattern: [i32; L]) -> SafeSponge<L, S> {
         let mut sponge = SafeSponge::<L, S> {
             state: [0; WIDTH],
+            out: Vec::new(),
             absorb_pos: 0,
             squeeze_pos: 0,
             io_pattern: pattern,
@@ -46,7 +48,6 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 
     pub fn squeeze(mut self) -> Vec<Field> {
         assert(self.io_pattern[self.io_count] < 0);
-        let mut out = Vec::new();
 
         for _ in 0..-(self.io_pattern[self.io_count]) {
             if self.squeeze_pos == RATE {
@@ -54,11 +55,11 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
                 self.squeeze_pos = 0;
                 self.absorb_pos = 0;
             }
-            out.push(self.state[self.squeeze_pos + CAPACITY]);
+            self.out.push(self.state[self.squeeze_pos + CAPACITY]);
             self.squeeze_pos += 1;
         }
         self.io_count += 1;
-        out
+        self.out
     }
 
     pub fn finish(mut self) {
