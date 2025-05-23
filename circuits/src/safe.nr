@@ -10,12 +10,12 @@ pub struct SafeSponge<let L: u32, let S: u32> {
     out: Vec<Field>,
     absorb_pos: u32,
     squeeze_pos: u32,
-    io_pattern: [i32; L],
+    io_pattern: [u32; L],
     io_count: u32,
 }
 
 impl<let L: u32, let S: u32> SafeSponge<L, S> {
-    pub fn start(pattern: [i32; L]) -> SafeSponge<L, S> {
+    pub fn start(pattern: [u32; L]) -> SafeSponge<L, S> {
         let mut sponge = SafeSponge::<L, S> {
             state: [0; WIDTH],
             out: Vec::new(),
@@ -29,7 +29,6 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
     }
 
     pub fn absorb(mut self, input: [Field; S]) -> SafeSponge<L, S> {
-        assert(self.io_pattern[self.io_count] > 0);
         assert(self.io_pattern[self.io_count] as u32 == S);
 
         for i in 0..self.io_pattern[self.io_count] {
@@ -47,9 +46,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
     }
 
     pub fn squeeze(mut self) -> Vec<Field> {
-        assert(self.io_pattern[self.io_count] < 0);
-
-        for _ in 0..-(self.io_pattern[self.io_count]) {
+        for _ in 0..self.io_pattern[self.io_count] {
             if self.squeeze_pos == RATE {
                 self.state = poseidon2_permutation(self.state, self.state.len());
                 self.squeeze_pos = 0;
@@ -75,7 +72,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 
 #[test]
 fn test_safe() {
-    let pattern = [5, -1];
+    let pattern = [5, 4];
     let mut safe = SafeSponge::start(pattern);
     safe = safe.absorb([1, 2, 3, 4, 5]);
     let res = safe.squeeze();
