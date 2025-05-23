@@ -65,6 +65,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
     pub fn finish(mut self) {
         // Clear the state
         self.state = [0; WIDTH];
+        self.out = Vec::new();
         self.io_count = 0;
         self.io_pattern = [0; L];
         self.squeeze_pos = 0;
