@@ -92,20 +92,17 @@ impl BfvPkEncryptionCircuit {
         // RHS = pk0_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
 
         // CORRECT ENCRYPTION CONSTRAINT
-        for i in 0..L {
-            let gamma = safe.squeeze().get(i);
+        let gammas = safe.squeeze();
 
+        for i in 0..L {
+            let gamma = gammas.get(i);
             // Gamma evaluation
             let u_at_gamma = self.u.eval(gamma);
             let e0_at_gamma = self.e0.eval(gamma);
-            let e1_at_gamma = self.e1.eval(gamma);
             let k1_at_gamma = self.k1.eval(gamma);
             let pk0is_at_gamma = self.pk0is.map(|pk| pk.eval(gamma));
-            let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
             let r1i_at_gamma = self.r1is.map(|r1| r1.eval(gamma));
             let r2i_at_gamma = self.r2is.map(|r2| r2.eval(gamma));
-            let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
-            let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
 
             // cyclo poly is equal to x^N + 1
             let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
@@ -124,6 +121,13 @@ impl BfvPkEncryptionCircuit {
 
             // LHS(gamma) = RHS(gamma)
             assert_eq(lhs, rhs);
+
+            let gamma = gammas.get(i + 1);
+            let u_at_gamma = self.u.eval(gamma);
+            let e1_at_gamma = self.e1.eval(gamma);
+            let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
+            let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
+            let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
 
             // Second step
             let pk1_u = (pk1is_at_gamma[i] * u_at_gamma) + e1_at_gamma;
