@@ -70,7 +70,7 @@ impl BfvPkEncryptionCircuit {
         let inputs = self.payload();
         let mut safe = SafeSponge::start([size as i32, -1]);
         safe = safe.absorb(inputs);
-        let gamma = safe.squeeze();
+        let gamma = safe.squeeze().get(0);
         safe.finish();
 
         // cyclo poly is equal to x^N + 1

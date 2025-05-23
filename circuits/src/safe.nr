@@ -44,9 +44,9 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
         self
     }
 
-    pub fn squeeze(mut self) -> Field {
+    pub fn squeeze(mut self) -> Vec<Field> {
         assert(self.io_pattern[self.io_count] < 0);
-        let mut out = 0;
+        let mut out = Vec::new();
 
         for _ in 0..-(self.io_pattern[self.io_count]) {
             if self.squeeze_pos == RATE {
@@ -54,7 +54,7 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
                 self.squeeze_pos = 0;
                 self.absorb_pos = 0;
             }
-            out = out + self.state[self.squeeze_pos + CAPACITY];
+            out.push(self.state[self.squeeze_pos + CAPACITY]);
             self.squeeze_pos += 1;
         }
         self.io_count += 1;
@@ -78,5 +78,5 @@ fn test_safe() {
     safe = safe.absorb([1, 2, 3, 4, 5]);
     let res = safe.squeeze();
     safe.finish();
-    assert_eq(res, 0x13cc936c31fad32eb44495726664b0c5bfe83507fcd5c68e9aeb8aebe77bcbd5);
+    assert_eq(res.get(0), 0x0ef061c5b88d5d81e9c7c306701e01e03c5040a3d3c4b051ada3f150b44dc595);
 }
