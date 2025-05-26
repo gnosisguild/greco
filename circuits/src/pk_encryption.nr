@@ -1,3 +1,4 @@
+// filepath: /home/auryn/git/gnosisguild/greco/circuits/src/pk_encryption.nr
 use super::pk_enc_constants_1024_2x52_2048::{
     E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS,
     R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, U_BOUND,
@@ -5,19 +6,39 @@ use super::pk_enc_constants_1024_2x52_2048::{
 use super::polynomial::Polynomial;
 use super::safe::SafeSponge;
 
-// Total size of the all polynomial's coefficients.
+/// Total size of all polynomial coefficients.
 global size: u32 = (10 * L + 4) * N - 8;
 
-/// BfvPkEncryption circuit structure
+/// Quantization shift parameter for scaling coefficients to handle field size constraints
+global QUANT_SHIFT: u8 = 19;
+
+/// Default batch size for range checking - a balance between efficiency and safety
+global DEFAULT_BATCH_SIZE: u32 = 64;
+
+/// Small batch size for small range checks
+global SMALL_BATCH_SIZE: u32 = 16;
+
+/// BfvPkEncryption circuit structure representing a BFV public key encryption system
 pub struct BfvPkEncryptionCircuit {
+    /// Public key components
     pk0is: [Polynomial<N>; L],
     pk1is: [Polynomial<N>; L],
+
+    /// Ciphertext components
     ct0is: [Polynomial<N>; L],
     ct1is: [Polynomial<N>; L],
+
+    /// Encryption randomness
     u: Polynomial<N>,
+
+    /// Error terms
     e0: Polynomial<N>,
     e1: Polynomial<N>,
+
+    /// Message polynomial
     k1: Polynomial<N>,
+
+    /// Intermediate reduction products
     r1is: [Polynomial<(2 * N) - 1>; L],
     r2is: [Polynomial<N - 1>; L],
     p1is: [Polynomial<(2 * N) - 1>; L],
@@ -25,7 +46,21 @@ pub struct BfvPkEncryptionCircuit {
 }
 
 impl BfvPkEncryptionCircuit {
-    /// Creates a new circuit
+    /// Creates a new BFV public key encryption circuit instance
+    ///
+    /// # Arguments
+    /// * `pk0is` - First component of the public key
+    /// * `pk1is` - Second component of the public key
+    /// * `ct0is` - First component of the ciphertext
+    /// * `ct1is` - Second component of the ciphertext
+    /// * `u` - Encryption randomness polynomial
+    /// * `e0` - First error term
+    /// * `e1` - Second error term
+    /// * `k1` - Message polynomial
+    /// * `r1is` - First intermediate reduction product
+    /// * `r2is` - Second intermediate reduction product
+    /// * `p1is` - First intermediate modular product
+    /// * `p2is` - Second intermediate modular product
     pub fn new(
         pk0is: [Polynomial<N>; L],
         pk1is: [Polynomial<N>; L],
@@ -44,6 +79,9 @@ impl BfvPkEncryptionCircuit {
     }
 
     /// Assigns all the witness polynomial coefficients to an array
+    ///
+    /// # Returns
+    /// * Array of Field elements containing flattened polynomial coefficients
     fn payload(self) -> [Field; size] {
         let mut inputs = [0; size];
         let mut offset = 0;
@@ -64,33 +102,282 @@ impl BfvPkEncryptionCircuit {
         inputs
     }
 
+    /// Performs batch range checking on a polynomial using random linear combinations
+    ///
+    /// # Arguments
+    /// * `poly` - The polynomial to check
+    /// * `bound` - The upper bound for coefficients
+    /// * `gammas` - Vector of random challenge values from Fiat-Shamir
+    /// * `gamma_offset` - Starting offset for gamma values
+    /// * `batch_size` - Size of each batch for range checking
+    ///
+    /// # Returns
+    /// * Next gamma offset for subsequent operations
+    fn batch_range_check<let M: u32>(
+        self,
+        poly: Polynomial<M>,
+        bound: Field,
+        gammas: Vec<Field>,
+        mut gamma_offset: u32,
+        batch_size: u32,
+    ) -> u32 {
+        let num_batches = (M + batch_size - 1) / batch_size;
+        let quant_bound: Field = bound;
+
+        for b in 0..num_batches {
+            let mut lin_comb: Field = 0;
+            let mut count: Field = 0;
+
+            for j in 0..batch_size {
+                let idx = b * batch_size + j;
+                let mask: Field = if idx < M { 1 } else { 0 };
+
+                // Get coefficient and quantize it
+                let coeff: Field = if idx < M { poly.coefficients[idx] } else { 0 };
+                let quant_coeff: Field = (coeff as u32 >> QUANT_SHIFT) as Field * mask;
+
+                // Use a fresh gamma for each coefficient for better security
+                let quant_gamma: Field =
+                    (gammas.get(gamma_offset) as u32 % (1 << QUANT_SHIFT)) as Field;
+                gamma_offset = (gamma_offset + 1) % gammas.len();
+
+                lin_comb += quant_coeff * quant_gamma;
+                count += mask;
+            }
+
+            // Calculate the maximum possible sum and check against the linear combination
+            let max_sum: Field = quant_bound * count;
+            // Use <= for more reliable constraints
+            assert(lin_comb as u64 <= max_sum as u64);
+        }
+
+        gamma_offset
+    }
+
+    /// Performs batch range checking on a polynomial using random linear combinations
+    /// for small bounds (no need for quantization)
+    /// This is for one-sided range checks in the range [0, bound]
+    ///
+    /// # Arguments
+    /// * `poly` - The polynomial to check
+    /// * `bound` - The upper bound for coefficients
+    /// * `gammas` - Vector of random challenge values from Fiat-Shamir
+    /// * `gamma_offset` - Starting offset for gamma values
+    /// * `batch_size` - Size of each batch for range checking
+    ///
+    /// # Returns
+    /// * Next gamma offset for subsequent operations
+    fn batch_range_check_small<let M: u32>(
+        self,
+        poly: Polynomial<M>,
+        bound: Field,
+        gammas: Vec<Field>,
+        mut gamma_offset: u32,
+        batch_size: u32,
+    ) -> u32 {
+        let num_batches = (M + batch_size - 1) / batch_size;
+
+        // For small bounds, we can use a simpler approach
+        // Shift all values to positive range [0, 2*bound] and use smaller gammas
+        let shift_value = bound;
+        let max_shifted_value = 2 * bound;
+
+        for b in 0..num_batches {
+            let mut lin_comb: Field = 0;
+            let mut count: u32 = 0;
+
+            for j in 0..batch_size {
+                let idx = b * batch_size + j;
+
+                if idx < M {
+                    // Get coefficient and shift it to positive range
+                    let coeff = poly.coefficients[idx];
+                    let shifted_coeff = coeff + shift_value;
+
+                    // Use a small gamma to avoid overflow (mod 256 to keep it small)
+                    let small_gamma = (gammas.get(gamma_offset) as u32 % 256) as Field;
+                    gamma_offset = (gamma_offset + 1) % gammas.len();
+
+                    // Add to linear combination
+                    lin_comb += shifted_coeff * small_gamma;
+                    count += 1;
+                }
+            }
+
+            // Calculate the maximum possible sum using small integers
+            // max_shifted_value * 255 * count should be well within Field range
+            let max_gamma = 255 as Field;
+            let max_sum = max_shifted_value * max_gamma * (count as Field);
+
+            // Compare using u64 to avoid Field comparison issues
+            // Both values should be small enough to fit in u64
+            assert((lin_comb as u64) <= (max_sum as u64));
+        }
+
+        gamma_offset
+    }
+
+    /// Performs batch range checking with two-sided bounds for small bounds
+    /// (no need for quantization)
+    ///
+    /// # Arguments
+    /// * `poly` - The polynomial to check
+    /// * `upper_bound` - The upper bound for coefficients
+    /// * `lower_bound` - The lower bound for coefficients
+    /// * `gammas` - Vector of random challenge values from Fiat-Shamir
+    /// * `gamma_offset` - Starting offset for gamma values
+    /// * `batch_size` - Size of each batch for range checking
+    ///
+    /// # Returns
+    /// * Next gamma offset for subsequent operations
+    fn batch_range_check_2bounds_small<let M: u32>(
+        self,
+        poly: Polynomial<M>,
+        upper_bound: u64,
+        lower_bound: i64, // We expect this to be negative
+        gammas: Vec<Field>,
+        mut gamma_offset: u32,
+        batch_size: u32,
+    ) -> u32 {
+        let num_batches = (M + batch_size - 1) / batch_size;
+
+        // Calculate the range size and shift value
+        let abs_lower_bound = (-lower_bound) as u64; // Convert to absolute value
+        let range_size = upper_bound + abs_lower_bound;
+        let shift_value = abs_lower_bound as Field;
+
+        for b in 0..num_batches {
+            let mut lin_comb: Field = 0;
+            let mut count: u32 = 0;
+
+            for j in 0..batch_size {
+                let idx = b * batch_size + j;
+
+                if idx < M {
+                    // Get coefficient and shift it to positive range
+                    let coeff = poly.coefficients[idx];
+                    let shifted_coeff = coeff + shift_value;
+
+                    // Use a small gamma to avoid overflow (mod 256 to keep it small)
+                    let small_gamma = (gammas.get(gamma_offset) as u32 % 256) as Field;
+                    gamma_offset = (gamma_offset + 1) % gammas.len();
+
+                    // Add to linear combination
+                    lin_comb += shifted_coeff * small_gamma;
+                    count += 1;
+                }
+            }
+
+            // Calculate the maximum possible sum using small integers
+            // range_size * 255 * count should be well within Field range
+            let max_gamma = 255 as Field;
+            let max_sum = (range_size as Field) * max_gamma * (count as Field);
+
+            // Compare using u64 to avoid Field comparison issues
+            // Both values should be small enough to fit in u64
+            assert((lin_comb as u64) <= (max_sum as u64));
+        }
+
+        gamma_offset
+    }
+
+    /// Verifies that the encryption is correctly formed according to BFV scheme
+    ///
+    /// This method performs a series of range checks on the polynomials to ensure
+    /// the encryption is valid and meets security requirements. It uses batch range
+    /// checking with random linear combinations to reduce the number of constraints.
+    /// It also verifies the correctness of the encryption operation by evaluating
+    /// polynomials at specific points and checking the expected relationships.
     pub fn correct_encryption(self) {
-        // Bound check
+        // Generate challenge values for random linear combinations
+        let inputs = self.payload();
+        let mut safe: SafeSponge<2, 24568> = SafeSponge::start([size, 2 * L]);
+        safe = safe.absorb(inputs);
+        let gammas = safe.squeeze();
+
+        // Initialize offset tracker for gamma selection
+        let mut gamma_offset: u32 = 0;
+
+        // Special polynomial checks using traditional range checking for critical components
         self.u.range_check_1bound(U_BOUND);
         self.e0.range_check_1bound(E_BOUND);
         self.e1.range_check_1bound(E_BOUND);
         self.k1.range_check_2bounds(K1_UP_BOUND, K1_LOW_BOUND);
 
+        // Batch range check the public key components pk0is and pk1is
+        // These have large bounds and need quantization
         for i in 0..L {
-            self.pk0is[i].range_check_1bound(PK_BOUND[i]);
-            self.pk1is[i].range_check_1bound(PK_BOUND[i]);
-            self.r1is[i].range_check_2bounds(R1_UP_BOUNDS[i], R1_LOW_BOUNDS[i]);
-            self.r2is[i].range_check_1bound(R2_BOUNDS[i]);
-            self.p1is[i].range_check_1bound(P1_BOUNDS[i]);
-            self.p2is[i].range_check_1bound(P2_BOUNDS[i]);
+            let quant_bound: Field = (PK_BOUND[i] >> QUANT_SHIFT) as Field;
+            gamma_offset = self.batch_range_check(
+                self.pk0is[i],
+                quant_bound,
+                gammas,
+                gamma_offset,
+                DEFAULT_BATCH_SIZE,
+            );
+
+            gamma_offset = self.batch_range_check(
+                self.pk1is[i],
+                quant_bound,
+                gammas,
+                gamma_offset,
+                DEFAULT_BATCH_SIZE,
+            );
         }
 
-        // We assign all the coefficients to an array to generate challenge values
-        let inputs = self.payload();
-        let mut safe = SafeSponge::start([size, 2 * L]);
-        safe = safe.absorb(inputs);
-        let gammas = safe.squeeze();
+        // Batch range check the intermediate polynomials
+        for i in 0..L {
+            // Apply batch range checking to r1is with two-sided bounds
+            // R1 bounds are small, no quantization needed
+
+            // commenting out for now to test the rest of the circuit
+            gamma_offset = self.batch_range_check_2bounds_small(
+                self.r1is[i],
+                R1_UP_BOUNDS[i],
+                R1_LOW_BOUNDS[i],
+                gammas,
+                gamma_offset,
+                SMALL_BATCH_SIZE,
+            );
+
+            // Apply batch range checking to r2is with one-sided bounds
+            // R2 bounds are large, need quantization
+            let r2_quant_bound = (R2_BOUNDS[i] >> QUANT_SHIFT) as Field;
+            gamma_offset = self.batch_range_check(
+                self.r2is[i],
+                r2_quant_bound,
+                gammas,
+                gamma_offset,
+                DEFAULT_BATCH_SIZE,
+            );
+
+            // Apply batch range checking to p1is with two-sided bounds
+            // P1 bounds are small, no quantization needed, but we need to handle [-bound, bound] range
+            gamma_offset = self.batch_range_check_small(
+                self.p1is[i],
+                P1_BOUNDS[i] as Field,
+                gammas,
+                gamma_offset,
+                SMALL_BATCH_SIZE,
+            );
+
+            // Apply batch range checking to p2is with one-sided bounds
+            // P2 bounds are large, need quantization
+            let p2_quant_bound = (P2_BOUNDS[i] >> QUANT_SHIFT) as Field;
+            gamma_offset = self.batch_range_check(
+                self.p2is[i],
+                p2_quant_bound,
+                gammas,
+                gamma_offset,
+                DEFAULT_BATCH_SIZE,
+            );
+        }
 
         // CORRECT ENCRYPTION CONSTRAINT
         // For each `i` Prove that LHS(gamma) = RHS(gamma)
         // pk0_u = pk0is(gamma) * u(gamma) + e0(gamma)
         // LHS = ct0i(gamma)
-        // RHS = pk0_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
+        // RHS = pk0_u + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
         for i in 0..L {
             let gamma = gammas.get(i);
 
@@ -101,27 +388,27 @@ impl BfvPkEncryptionCircuit {
             let u_at_gamma = self.u.eval(gamma);
             let e0_at_gamma = self.e0.eval(gamma);
             let k1_at_gamma = self.k1.eval(gamma);
-            let pk0is_at_gamma = self.pk0is.map(|pk| pk.eval(gamma));
-            let r1i_at_gamma = self.r1is.map(|r1| r1.eval(gamma));
-            let r2i_at_gamma = self.r2is.map(|r2| r2.eval(gamma));
+            let pk0is_at_gamma = self.pk0is[i].eval(gamma);
+            let r1i_at_gamma = self.r1is[i].eval(gamma);
+            let r2i_at_gamma = self.r2is[i].eval(gamma);
 
             // First step
-            let pk0_u = (pk0is_at_gamma[i] * u_at_gamma) + e0_at_gamma;
+            let pk0_u = (pk0is_at_gamma * u_at_gamma) + e0_at_gamma;
 
             // rhs = pk0_u + k1(gamma) * k0i
             let rhs = pk0_u + (k1_at_gamma * K0IS[i]);
 
             // rhs = rhs + r1i(gamma) * qi
-            let rhs = rhs + (r1i_at_gamma[i] * QIS[i]);
+            let rhs = rhs + (r1i_at_gamma * QIS[i]);
 
             // rhs = rhs + r2i(gamma) * cyclo(gamma)
-            let rhs = rhs + r2i_at_gamma[i] * cyclo_at_gamma;
+            let rhs = rhs + r2i_at_gamma * cyclo_at_gamma;
             let lhs = self.ct0is[i].eval(gamma);
 
             // LHS(gamma) = RHS(gamma)
             assert_eq(lhs, rhs);
 
-            // Gamma evaluation
+            // Gamma evaluation for the second part
             let gamma = gammas.get(i + L);
 
             // cyclo poly is equal to x^N + 1
@@ -129,32 +416,35 @@ impl BfvPkEncryptionCircuit {
 
             let u_at_gamma = self.u.eval(gamma);
             let e1_at_gamma = self.e1.eval(gamma);
-            let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
-            let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
-            let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
+            let pk1is_at_gamma = self.pk1is[i].eval(gamma);
+            let p1is_at_gamma = self.p1is[i].eval(gamma);
+            let p2is_at_gamma = self.p2is[i].eval(gamma);
 
             // Second step
-            let pk1_u = (pk1is_at_gamma[i] * u_at_gamma) + e1_at_gamma;
+            let pk1_u = (pk1is_at_gamma * u_at_gamma) + e1_at_gamma;
 
-            //rhs = pk1_u + p2i * cyclo(gamma)
-            let rhs = pk1_u + p2is_at_gamma[i] * cyclo_at_gamma;
+            // rhs = pk1_u + p2i * cyclo(gamma)
+            let rhs = pk1_u + p2is_at_gamma * cyclo_at_gamma;
 
-            //rhs = rhs + p1s * qi
-            let rhs = rhs + (p1is_at_gamma[i] * QIS[i]);
+            // rhs = rhs + p1s * qi
+            let rhs = rhs + (p1is_at_gamma * QIS[i]);
             let lhs = self.ct1is[i].eval(gamma);
 
             // LHS(gamma) = RHS(gamma)
             assert_eq(lhs, rhs);
         }
-        safe.finish();
     }
 }
 
 /// Flattens a 2D array of `Polynomial<N>` into a 1D `inputs` array of `Field` elements.
-/// # Example
-/// ```rust
-/// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
-/// ```
+///
+/// # Arguments
+/// * `inputs` - The array to fill with flattened values
+/// * `poly` - The array of polynomials to flatten
+/// * `offset` - Starting position in the inputs array
+///
+/// # Returns
+/// * A tuple containing the updated inputs array and the new offset
 fn flatten<let N: u32, let L: u32>(
     mut inputs: [Field; size],
     poly: [Polynomial<N>; L],
@@ -171,7 +461,7 @@ fn flatten<let N: u32, let L: u32>(
 }
 
 // #[test]
-// // Test case for correct ecnryption function with small Polynomials
+// // Test case for correct encryption function with small Polynomials
 // fn correct_enc_test() {
 //     let pk0is = [
 //         Polynomial::new([

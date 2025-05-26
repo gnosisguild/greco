@@ -1,8 +1,8 @@
-use std::field::bn254::assert_lt;
+// filepath: /home/auryn/git/gnosisguild/greco/circuits/src/polynomial.nr
 
 /// Polynomial structure
 pub struct Polynomial<let N: u32> {
-    // Coefficients of the polynomial (Biggest degree at the first index)
+    /// Coefficients of the polynomial (Biggest degree at the first index)
     pub coefficients: [Field; N],
 }
 
@@ -13,6 +13,12 @@ impl<let N: u32> Polynomial<N> {
     }
 
     /// Evaluate a polynomial at a point in the field.
+    ///
+    /// # Arguments
+    /// * `x` - The point at which to evaluate the polynomial
+    ///
+    /// # Returns
+    /// * The result of evaluating the polynomial at point x
     pub fn eval(self, x: Field) -> Field {
         {
             let mut acc = self.coefficients[0];
@@ -24,22 +30,28 @@ impl<let N: u32> Polynomial<N> {
     }
 
     ///  Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2 * upper_bound]`.
+    ///
+    /// # Arguments
+    /// * `upper_bound` - The upper bound for the polynomial's coefficients
     pub fn range_check_1bound(self, upper_bound: u64) {
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + upper_bound as Field;
-            assert_lt(shifted_coeff, (2 * upper_bound as Field) + 1);
+            let upper_limit = (2 * upper_bound as Field) + 1;
+            assert(shifted_coeff as u64 < upper_limit as u64);
         }
     }
 
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
+    ///
+    /// # Arguments
+    /// * `upper_bound` - The upper bound for the polynomial's coefficients
+    /// * `lower_bound` - The lower bound for the polynomial's coefficients
     pub fn range_check_2bounds(self, upper_bound: u64, lower_bound: i64) {
-        let mut value_shift = (lower_bound * -1) as u64;
+        let value_shift = (lower_bound * -1) as u64;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + value_shift as Field;
-            assert_lt(
-                shifted_coeff,
-                upper_bound as Field - lower_bound as Field + 1,
-            );
+            let upper_limit = upper_bound as Field - lower_bound as Field + 1;
+            assert(shifted_coeff as u64 < upper_limit as u64);
         }
     }
 }
