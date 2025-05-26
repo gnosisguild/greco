@@ -2,58 +2,55 @@ name: Circuit Test
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   test-circuit:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-24.04
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install Nargo
-      uses: noir-lang/noirup@v0.1.3
-      with:
-        toolchain: latest
+      - name: Install Nargo
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
+          source ~/.bashrc
+          ~/.nargo/bin/noirup
 
-    - name: Install Barretenberg
-      run: |
-        # Download and install Barretenberg CLI
-        curl -L https://github.com/AztecProtocol/aztec-packages/releases/download/aztec-packages-v0.41.0/barretenberg-x86_64-linux-gnu.tar.gz | tar -xz
-        sudo mv bb /usr/local/bin/
-        chmod +x /usr/local/bin/bb
+      - name: Add Nargo to PATH
+        run: |
+          echo "$HOME/.nargo/bin" >> $GITHUB_PATH
 
-    - name: Compile circuit
-      working-directory: ./test
-      run: nargo compile
+      - name: Install Barretenberg
+        run: |
+          # Download and install Barretenberg CLI
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/master/barretenberg/bbup/install | bash
+          source ~/.bashrc
+          ~/.bb/bbup
 
-    - name: Execute circuit
-      working-directory: ./test
-      run: nargo execute
+      - name: Add bb to PATH
+        run: |
+          echo "$HOME/.bb" >> $GITHUB_PATH
 
-    - name: Generate proof
-      working-directory: ./test
-      run: bb prove -b ./target/test.json -w ./target/test.gz -o ./target
+      - name: Compile circuit
+        working-directory: ./test
+        run: nargo compile
 
-    - name: Write verification key
-      working-directory: ./test
-      run: bb write_vk -b ./target/test.json -o ./target
+      - name: Execute circuit
+        working-directory: ./test
+        run: nargo execute
 
-    - name: Verify proof
-      working-directory: ./test
-      run: bb verify -k ./target/vk -p ./target/proof
+      - name: Generate proof
+        working-directory: ./test
+        run: bb prove -b ./target/test.json -w ./target/test.gz -o ./target
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v3
-      if: always()
-      with:
-        name: circuit-artifacts
-        path: |
-          test/target/test.json
-          test/target/test.gz
-          test/target/proof
-          test/target/vk
-          test/target/public_inputs
+      - name: Write verification key
+        working-directory: ./test
+        run: bb write_vk -b ./target/test.json -o ./target
+
+      - name: Verify proof
+        working-directory: ./test
+        run: bb verify -k ./target/vk -p ./target/proof
