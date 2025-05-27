@@ -3,7 +3,7 @@ use super::pk_enc_constants_1024_2x52_2048::{
     R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, U_BOUND,
 };
 use super::polynomial::Polynomial;
-use poseidon::poseidon2::Poseidon2;
+use super::safe::SafeSponge;
 
 // Total size of the all polynomial's coefficients.
 global size: u32 = (10 * L + 4) * N - 8;
@@ -65,15 +65,7 @@ impl BfvPkEncryptionCircuit {
     }
 
     pub fn correct_encryption(self) {
-        // TODO: Add domain separation
-        // We assign all the coefficients to an array to generate a challenge value with Poseidon hash function
-        let inputs = self.payload();
-        let gamma = Poseidon2::hash(inputs, size);
-
-        // cyclo poly is equal to x^N + 1
-        let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
-
-        // Bound checks
+        // Bound check
         self.u.range_check_1bound(U_BOUND);
         self.e0.range_check_1bound(E_BOUND);
         self.e1.range_check_1bound(E_BOUND);
@@ -88,25 +80,31 @@ impl BfvPkEncryptionCircuit {
             self.p2is[i].range_check_1bound(P2_BOUNDS[i]);
         }
 
-        // Gamma evaluation
-        let u_at_gamma = self.u.eval(gamma);
-        let e0_at_gamma = self.e0.eval(gamma);
-        let e1_at_gamma = self.e1.eval(gamma);
-        let k1_at_gamma = self.k1.eval(gamma);
-        let pk0is_at_gamma = self.pk0is.map(|pk| pk.eval(gamma));
-        let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
-        let r1i_at_gamma = self.r1is.map(|r1| r1.eval(gamma));
-        let r2i_at_gamma = self.r2is.map(|r2| r2.eval(gamma));
-        let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
-        let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
+        // We assign all the coefficients to an array to generate challenge values
+        let inputs = self.payload();
+        let mut safe = SafeSponge::start([size, 2 * L]);
+        safe = safe.absorb(inputs);
+        let gammas = safe.squeeze();
 
+        // CORRECT ENCRYPTION CONSTRAINT
         // For each `i` Prove that LHS(gamma) = RHS(gamma)
         // pk0_u = pk0is(gamma) * u(gamma) + e0(gamma)
         // LHS = ct0i(gamma)
         // RHS = pk0_u  + k1(gamma) * k0i + r1i(gamma) * qi + r2i(gamma) * cyclo(gamma)
-
-        // CORRECT ENCRYPTION CONSTRAINT
         for i in 0..L {
+            let gamma = gammas.get(i);
+
+            // cyclo poly is equal to x^N + 1
+            let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
+
+            // Gamma evaluation
+            let u_at_gamma = self.u.eval(gamma);
+            let e0_at_gamma = self.e0.eval(gamma);
+            let k1_at_gamma = self.k1.eval(gamma);
+            let pk0is_at_gamma = self.pk0is.map(|pk| pk.eval(gamma));
+            let r1i_at_gamma = self.r1is.map(|r1| r1.eval(gamma));
+            let r2i_at_gamma = self.r2is.map(|r2| r2.eval(gamma));
+
             // First step
             let pk0_u = (pk0is_at_gamma[i] * u_at_gamma) + e0_at_gamma;
 
@@ -123,6 +121,18 @@ impl BfvPkEncryptionCircuit {
             // LHS(gamma) = RHS(gamma)
             assert_eq(lhs, rhs);
 
+            // Gamma evaluation
+            let gamma = gammas.get(i + L);
+
+            // cyclo poly is equal to x^N + 1
+            let cyclo_at_gamma = gamma.pow_32(N as Field) + 1;
+
+            let u_at_gamma = self.u.eval(gamma);
+            let e1_at_gamma = self.e1.eval(gamma);
+            let pk1is_at_gamma = self.pk1is.map(|pk| pk.eval(gamma));
+            let p1is_at_gamma = self.p1is.map(|p1| p1.eval(gamma));
+            let p2is_at_gamma = self.p2is.map(|p2| p2.eval(gamma));
+
             // Second step
             let pk1_u = (pk1is_at_gamma[i] * u_at_gamma) + e1_at_gamma;
 
@@ -136,6 +146,7 @@ impl BfvPkEncryptionCircuit {
             // LHS(gamma) = RHS(gamma)
             assert_eq(lhs, rhs);
         }
+        safe.finish();
     }
 }
 

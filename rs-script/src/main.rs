@@ -1,5 +1,6 @@
 mod poly;
 
+use blake3::Hasher;
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
 };
@@ -8,20 +9,20 @@ use fhe_math::{
     zq::Modulus,
 };
 use fhe_traits::*;
-use itertools::izip;
+use itertools::{izip, Itertools};
 
-use num_bigint::BigInt;
-use num_traits::{Num, Signed, ToPrimitive, Zero};
+use num_bigint::{BigInt, BigUint, Sign};
+use num_traits::{FromPrimitive, Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
-use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
+use std::{fs::File, str::FromStr};
 
 use poly::*;
 
@@ -833,6 +834,43 @@ impl InputValidationBounds {
             k0i_constants
         )?;
 
+        let pk_bound_u64 = self
+            .pk
+            .iter()
+            .map(|x| x.to_u64().unwrap())
+            .collect::<Vec<u64>>();
+
+        let mut hasher = Hasher::new();
+        hasher.update(params.degree().to_le_bytes().as_slice());
+        hasher.update(self.pk.len().to_le_bytes().as_slice());
+        hasher.update(
+            &pk_bound_u64
+                .iter()
+                .flat_map(|num| num.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        hasher.update(
+            &ctx.moduli()
+                .iter()
+                .flat_map(|num| num.to_le_bytes())
+                .collect::<Vec<u8>>(),
+        );
+        let _domain_seperator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
+        let size = (10 * self.pk.len() + 4) * params.degree() - 8;
+        let io_pattern = [
+            BigUint::from_usize(size).unwrap(),
+            BigUint::from_usize(2 * self.pk.len()).unwrap(),
+        ]
+        .map(|x| x.to_bytes_le());
+        hasher.update(io_pattern[0].as_slice());
+        hasher.update(io_pattern[1].as_slice());
+
+        // TODO: Match the TAG calculation with the one in SAFE
+        let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes()) % ctx.modulus().clone();
+
+        writeln!(file, "/// Constant value for the SAFE sponge algorithm.")?;
+        writeln!(file, "pub global TAG: Field = {:?};", tag)?;
+
         Ok(())
     }
 }
@@ -942,24 +980,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&output_path).expect("Unable to create output directory");
     let file_path = output_path.join("Prover.toml");
     std::fs::write(file_path, toml_string).expect("Failed to write TOML file");
-
-    let zeroes = InputValidationVectors::new(moduli.len(), params.degree());
-    let zeroes_data = to_prover_toml_format(&zeroes);
-    let zeroes_toml = toml::to_string_pretty(&zeroes_data).expect("Failed to serialize TOML");
-
-    let file_path_zeroes = output_path.join("Prover0.toml");
-    std::fs::write(file_path_zeroes, zeroes_toml).expect("Failed to write zeroes TOML");
-
-    // Generate zeros filename and write file
-    let filename_zeroes = format!(
-        "pk_enc_{}_{}x{}_{}_zeroes.json",
-        N,
-        moduli.len(),
-        moduli_bitsize,
-        t.modulus()
-    );
-    let zeroes_json = InputValidationVectors::new(moduli.len(), params.degree()).to_json();
-    write_json_to_file(&output_path, &filename_zeroes, &zeroes_json);
 
     let filename_constants = format!(
         "pk_enc_constants_{}_{}x{}_{}.nr",
