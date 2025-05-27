@@ -1,5 +1,3 @@
-use std::field::bn254::assert_lt;
-
 /// Polynomial structure
 pub struct Polynomial<let N: u32> {
     // Coefficients of the polynomial (Biggest degree at the first index)
