@@ -14,32 +14,29 @@ impl<let N: u32> Polynomial<N> {
 
     /// Evaluate a polynomial at a point in the field.
     pub fn eval(self, x: Field) -> Field {
-        {
-            let mut acc = self.coefficients[0];
-            for i in 1..self.coefficients.len() {
-                acc = acc * x + self.coefficients[i];
-            }
-            acc
+        let mut acc = self.coefficients[0];
+        for i in 1..self.coefficients.len() {
+            acc = acc * x + self.coefficients[i];
         }
+        acc
     }
 
     ///  Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2 * upper_bound]`.
     pub fn range_check_1bound(self, upper_bound: u64) {
+        let comp_value = (2 * upper_bound) + 1;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + upper_bound as Field;
-            assert_lt(shifted_coeff, (2 * upper_bound as Field) + 1);
+            assert(shifted_coeff as u64 < comp_value);
         }
     }
 
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
     pub fn range_check_2bounds(self, upper_bound: u64, lower_bound: i64) {
         let mut value_shift = (lower_bound * -1) as u64;
+        let comp_value = upper_bound + value_shift + 1;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + value_shift as Field;
-            assert_lt(
-                shifted_coeff,
-                upper_bound as Field - lower_bound as Field + 1,
-            );
+            assert(shifted_coeff as u64 < comp_value);
         }
     }
 }
