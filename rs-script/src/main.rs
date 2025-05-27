@@ -856,10 +856,10 @@ impl InputValidationBounds {
                 .collect::<Vec<u8>>(),
         );
         let _domain_seperator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
-        let size = 10 * (self.pk.len() + 4) * params.degree() - 8;
+        let size = (10 * self.pk.len() + 4) * params.degree() - 8;
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
-            BigUint::from_usize(1).unwrap(),
+            BigUint::from_usize(2 * self.pk.len()).unwrap(),
         ]
         .map(|x| x.to_bytes_le());
         hasher.update(io_pattern[0].as_slice());
