@@ -25,7 +25,7 @@ impl<let N: u32> Polynomial<N> {
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + upper_bound as Field;
             shifted_coeff.assert_max_bit_size::<64>();
-            (comp_value - shifted_coeff).assert_max_bit_size::<64>();
+            (comp_value - shifted_coeff).assert_max_bit_size::<66>();
         }
     }
 
@@ -35,8 +35,8 @@ impl<let N: u32> Polynomial<N> {
         let comp_value = value_shift + upper_bound as Field;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + value_shift;
-            shifted_coeff.assert_max_bit_size::<64>();
-            (comp_value - shifted_coeff).assert_max_bit_size::<64>();
+            shifted_coeff.assert_max_bit_size::<66>();
+            (comp_value - shifted_coeff).assert_max_bit_size::<66>();
         }
     }
 }
