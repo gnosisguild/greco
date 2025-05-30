@@ -1,7 +1,7 @@
 use super::pk_enc_constants_1024_2x52_2048::TAG;
 use poseidon::poseidon2_permutation;
 
-global RATE: u32 = 7;
+global RATE: u32 = 3;
 global CAPACITY: u32 = 1;
 global WIDTH: u32 = 4;
 
@@ -30,55 +30,24 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 
     pub fn absorb(mut self, input: [Field; S]) -> SafeSponge<L, S> {
         assert(self.io_pattern[self.io_count] as u32 == S);
-        let mut temp_pos = 0;
+
         for i in 0..self.io_pattern[self.io_count] {
             if self.absorb_pos == RATE {
                 self.state = poseidon2_permutation(self.state, self.state.len());
                 self.absorb_pos = 0;
-                temp_pos = 0;
             }
             let pos = self.absorb_pos + CAPACITY;
-            if pos < 4 {
-                self.state[pos] += input[i];
-            }
-            else {
-                self.state[temp_pos] += input[i];
-                temp_pos += 1;
-            }
+            self.state[pos] = self.state[pos] + input[i];
             self.absorb_pos += 1;
         }
         self.io_count += 1;
-        self.squeeze_pos = 3;
+        self.squeeze_pos = RATE;
         self
     }
 
-
-    // pub fn squeeze(mut self) -> Vec<Field> {
-    //     let mut temp_pos = 0;
-    //     for _ in 0..self.io_pattern[self.io_count] {
-    //         if self.squeeze_pos == RATE {
-    //             self.state = poseidon2_permutation(self.state, self.state.len());
-    //             self.squeeze_pos = 0;
-    //             temp_pos = 0;
-    //             self.absorb_pos = 0;
-    //         }
-    //         let pos = self.squeeze_pos + CAPACITY;
-
-    //         if pos < 4 {
-    //             self.out.push(self.state[pos]);
-    //         } else {
-    //             self.out.push(self.state[temp_pos]);
-    //             temp_pos += 1;
-    //         }
-    //         self.squeeze_pos += 1;
-    //     }
-    //     self.io_count += 1;
-    //     self.out
-    // }
-
     pub fn squeeze(mut self) -> Vec<Field> {
         for _ in 0..self.io_pattern[self.io_count] {
-            if self.squeeze_pos == 3 {
+            if self.squeeze_pos == RATE {
                 self.state = poseidon2_permutation(self.state, self.state.len());
                 self.squeeze_pos = 0;
                 self.absorb_pos = 0;

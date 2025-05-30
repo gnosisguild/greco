@@ -1,5 +1,3 @@
-use std::field::bn254::assert_lt;
-
 /// Polynomial structure
 pub struct Polynomial<let N: u32> {
     // Coefficients of the polynomial (Biggest degree at the first index)
@@ -23,20 +21,22 @@ impl<let N: u32> Polynomial<N> {
 
     ///  Adds `upper_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, 2 * upper_bound]`.
     pub fn range_check_1bound(self, upper_bound: u64) {
-        let comp_value = (2 * upper_bound) + 1;
+        let comp_value = (2 * upper_bound) as Field;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + upper_bound as Field;
-            assert(shifted_coeff as u64 < comp_value);
+            shifted_coeff.assert_max_bit_size::<64>();
+            (comp_value - shifted_coeff).assert_max_bit_size::<64>();
         }
     }
 
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
     pub fn range_check_2bounds(self, upper_bound: u64, lower_bound: i64) {
-        let mut value_shift = (lower_bound * -1) as u64;
-        let comp_value = upper_bound + value_shift + 1;
+        let mut value_shift = (lower_bound * -1) as Field;
+        let comp_value = value_shift + upper_bound as Field;
         for i in 0..self.coefficients.len() {
-            let shifted_coeff = self.coefficients[i] + value_shift as Field;
-            assert(shifted_coeff as u64 < comp_value);
+            let shifted_coeff = self.coefficients[i] + value_shift;
+            shifted_coeff.assert_max_bit_size::<64>();
+            (comp_value - shifted_coeff).assert_max_bit_size::<64>();
         }
     }
 }
