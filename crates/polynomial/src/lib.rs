@@ -1,3 +1,5 @@
+/// @todo needs cleanup and refactoring and tests.
+
 /// Provides helper methods that perform modular poynomial arithmetic over polynomials encoded in vectors
 /// of coefficients from largest degree to lowest.
 use num_bigint::BigInt;

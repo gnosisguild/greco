@@ -1,5 +1,6 @@
-mod poly;
+/// @todo main needs to be focused on parameter generation "CLI".
 
+use polynomial::*;
 use blake3::Hasher;
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
@@ -23,8 +24,6 @@ use std::path::Path;
 use std::sync::Arc;
 use std::vec;
 use std::{fs::File, str::FromStr};
-
-use poly::*;
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
@@ -275,6 +274,16 @@ impl InputValidationVectors {
         let num_moduli = ctx.moduli().len();
         let mut res = InputValidationVectors::new(num_moduli, N as usize);
 
+        let ct0_coeffs = ct0.coefficients();
+        let ct1_coeffs = ct1.coefficients();
+        let pk0_coeffs = pk0.coefficients();
+        let pk1_coeffs = pk1.coefficients();
+
+        let ct0_coeffs_rows = ct0_coeffs.rows();
+        let ct1_coeffs_rows = ct1_coeffs.rows();
+        let pk0_coeffs_rows = pk0_coeffs.rows();
+        let pk1_coeffs_rows = pk1_coeffs.rows();
+
         // Perform the main computation logic
         let results: Vec<(
             usize,
@@ -289,10 +298,10 @@ impl InputValidationVectors {
             Vec<BigInt>,
         )> = izip!(
             ctx.moduli_operators(),
-            ct0.coefficients().rows(),
-            ct1.coefficients().rows(),
-            pk0.coefficients().rows(),
-            pk1.coefficients().rows()
+            ct0_coeffs_rows,
+            ct1_coeffs_rows,
+            pk0_coeffs_rows,
+            pk1_coeffs_rows,
         )
         .enumerate()
         .par_bridge()

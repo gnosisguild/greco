@@ -1,0 +1,10 @@
+[package]
+name = "e3-greco-polynomial"
+description = "Polynomial arithmetic modulo operations to support Greco constants generation"
+version.workspace = true
+edition.workspace = true
+license = "MIT"
+
+[dependencies]
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
