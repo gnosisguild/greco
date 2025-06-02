@@ -1,4 +1,4 @@
-use super::pk_enc_constants_1024_2x52_2048::{
+use super::constants::{
     E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS,
     R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, U_BOUND,
 };
