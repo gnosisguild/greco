@@ -1,0 +1,7 @@
+[package]
+name = "pk_encryption"
+type = "bin"
+authors = [""]
+
+[dependencies]
+circuits = { path = "../../circuits" }
