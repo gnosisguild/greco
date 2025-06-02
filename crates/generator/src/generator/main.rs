@@ -1,6 +1,3 @@
-/// @todo main needs to be focused on parameter generation "CLI".
-
-use polynomial::*;
 use blake3::Hasher;
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
@@ -10,20 +7,22 @@ use fhe_math::{
     zq::Modulus,
 };
 use fhe_traits::*;
-use itertools::{izip, Itertools};
+use itertools::izip;
+/// @todo main needs to be focused on parameter generation "CLI".
+use polynomial::*;
 
-use num_bigint::{BigInt, BigUint, Sign};
+use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, Num, Signed, ToPrimitive, Zero};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 use serde_json::json;
+use std::fs::File;
 use std::io::Write;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec;
-use std::{fs::File, str::FromStr};
 
 /// Set of vectors for input validation of a ciphertext
 #[derive(Clone, Debug)]
@@ -186,7 +185,7 @@ impl InputValidationVectors {
         let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
         let t = Modulus::new(params.plaintext())?;
-        let N: u64 = ctx.degree as u64;
+        let n: u64 = ctx.degree as u64;
 
         // Calculate k1 (independent of qi), center and reverse
         let q_mod_t = (ctx.modulus() % t.modulus())
@@ -265,14 +264,14 @@ impl InputValidationVectors {
         pk1.change_representation(Representation::PowerBasis);
 
         // Create cyclotomic polynomial x^N + 1
-        let mut cyclo = vec![BigInt::from(0u64); (N + 1) as usize];
+        let mut cyclo = vec![BigInt::from(0u64); (n + 1) as usize];
 
         cyclo[0] = BigInt::from(1u64); // x^N term
-        cyclo[N as usize] = BigInt::from(1u64); // x^0 term
+        cyclo[n as usize] = BigInt::from(1u64); // x^0 term
 
         // Initialize matrices to store results
         let num_moduli = ctx.moduli().len();
-        let mut res = InputValidationVectors::new(num_moduli, N as usize);
+        let mut res = InputValidationVectors::new(num_moduli, n as usize);
 
         let ct0_coeffs = ct0.coefficients();
         let ct1_coeffs = ct1.coefficients();
@@ -332,18 +331,24 @@ impl InputValidationVectors {
                 let k0qi = BigInt::from(koqi_u64); // Do not need to center this
 
                 // ki = k1 * k0qi
-                let ki = poly_scalar_mul(&k1, &k0qi);
+                let ki_poly = Polynomial::new(k1.clone()).scalar_mul(&k0qi);
+                let ki = ki_poly.coefficients().to_vec();
 
                 // Calculate ct0i_hat = pk0 * ui + e0i + ki
                 let ct0i_hat = {
-                    let pk0i_times_u = poly_mul(&pk0i, &u);
-                    assert_eq!((pk0i_times_u.len() as u64) - 1, 2 * (N - 1));
-                    let e0_plus_ki = poly_add(&e0, &ki);
-                    assert_eq!((e0_plus_ki.len() as u64) - 1, N - 1);
+                    let pk0i_poly = Polynomial::new(pk0i.clone());
+                    let u_poly = Polynomial::new(u.clone());
+                    let pk0i_times_u = pk0i_poly.mul(&u_poly);
+                    assert_eq!((pk0i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-                    poly_add(&pk0i_times_u, &e0_plus_ki)
+                    let e0_poly = Polynomial::new(e0.clone());
+                    let ki_poly = Polynomial::new(ki.clone());
+                    let e0_plus_ki = e0_poly.add(&ki_poly);
+                    assert_eq!((e0_plus_ki.coefficients().len() as u64) - 1, n - 1);
+
+                    pk0i_times_u.add(&e0_plus_ki).coefficients().to_vec()
                 };
-                assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (N - 1));
+                assert_eq!((ct0i_hat.len() as u64) - 1, 2 * (n - 1));
 
                 // Check whether ct0i_hat mod R_qi (the ring) is equal to ct0i
                 let mut ct0i_hat_mod_rqi = ct0i_hat.clone();
@@ -351,37 +356,64 @@ impl InputValidationVectors {
                 assert_eq!(&ct0i, &ct0i_hat_mod_rqi);
 
                 // Compute r2i numerator = ct0i - ct0i_hat and reduce/center the polynomial
-                let ct0i_minus_ct0i_hat = poly_sub(&ct0i, &ct0i_hat);
-                assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (N - 1));
+                let ct0i_poly = Polynomial::new(ct0i.clone());
+                let ct0i_hat_poly = Polynomial::new(ct0i_hat.clone());
+                let ct0i_minus_ct0i_hat = ct0i_poly.sub(&ct0i_hat_poly).coefficients().to_vec();
+                assert_eq!((ct0i_minus_ct0i_hat.len() as u64) - 1, 2 * (n - 1));
                 let mut ct0i_minus_ct0i_hat_mod_zqi = ct0i_minus_ct0i_hat.clone();
                 reduce_and_center_coefficients_mut(&mut ct0i_minus_ct0i_hat_mod_zqi, &qi_bigint);
 
                 // Compute r2i as the quotient of numerator divided by the cyclotomic polynomial
                 // to produce: (ct0i - ct0i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-                let (r2i, r2i_rem) = poly_div(&ct0i_minus_ct0i_hat_mod_zqi, &cyclo);
-                assert!(r2i_rem.is_empty());
-                assert_eq!((r2i.len() as u64) - 1, N - 2); // Order(r2i) = N - 2
+                let ct0i_minus_ct0i_hat_poly = Polynomial::new(ct0i_minus_ct0i_hat_mod_zqi.clone());
+                let cyclo_poly = Polynomial::new(cyclo.clone());
+                let (r2i_poly, r2i_rem_poly) = ct0i_minus_ct0i_hat_poly.div(&cyclo_poly).unwrap();
+                let r2i = r2i_poly.coefficients().to_vec();
+                let r2i_rem = r2i_rem_poly.coefficients().to_vec();
+                assert!(r2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r2i.len() as u64) - 1, n - 2); // Order(r2i) = N - 2
 
                 // Assert that (ct0i - ct0i_hat) = (r2i * cyclo) mod Z_qi
-                let r2i_times_cyclo = poly_mul(&r2i, &cyclo);
+                let r2i_poly = Polynomial::new(r2i.clone());
+                let r2i_times_cyclo = r2i_poly.mul(&cyclo_poly).coefficients().to_vec();
                 let mut r2i_times_cyclo_mod_zqi = r2i_times_cyclo.clone();
                 reduce_and_center_coefficients_mut(&mut r2i_times_cyclo_mod_zqi, &qi_bigint);
                 assert_eq!(&ct0i_minus_ct0i_hat_mod_zqi, &r2i_times_cyclo_mod_zqi);
-                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                assert_eq!((r2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
 
                 // Calculate r1i = (ct0i - ct0i_hat - r2i * cyclo) / qi mod Z_p. Remainder should be empty.
-                let r1i_num = poly_sub(&ct0i_minus_ct0i_hat, &r2i_times_cyclo);
-                assert_eq!((r1i_num.len() as u64) - 1, 2 * (N - 1));
+                let ct0i_minus_ct0i_hat_poly = Polynomial::new(ct0i_minus_ct0i_hat.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let r1i_num = ct0i_minus_ct0i_hat_poly
+                    .sub(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+                assert_eq!((r1i_num.len() as u64) - 1, 2 * (n - 1));
 
-                let (r1i, r1i_rem) = poly_div(&r1i_num, &[qi_bigint.clone()]);
-                assert!(r1i_rem.is_empty());
-                assert_eq!((r1i.len() as u64) - 1, 2 * (N - 1)); // Order(r1i) = 2*(N-1)
-                assert_eq!(&r1i_num, &poly_mul(&r1i, &[qi_bigint.clone()]));
+                let r1i_num_poly = Polynomial::new(r1i_num.clone());
+                let qi_poly = Polynomial::new(vec![qi_bigint.clone()]);
+                let (r1i_poly, r1i_rem_poly) = r1i_num_poly.div(&qi_poly).unwrap();
+                let r1i = r1i_poly.coefficients().to_vec();
+                let r1i_rem = r1i_rem_poly.coefficients().to_vec();
+                assert!(r1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((r1i.len() as u64) - 1, 2 * (n - 1)); // Order(r1i) = 2*(N-1)
+                let r1i_poly_check = Polynomial::new(r1i.clone());
+                assert_eq!(
+                    &r1i_num,
+                    &r1i_poly_check.mul(&qi_poly).coefficients().to_vec()
+                );
 
                 // Assert that ct0i = ct0i_hat + r1i * qi + r2i * cyclo mod Z_p
-                let r1i_times_qi = poly_scalar_mul(&r1i, &qi_bigint);
-                let mut ct0i_calculated =
-                    poly_add(&poly_add(&ct0i_hat, &r1i_times_qi), &r2i_times_cyclo);
+                let r1i_poly = Polynomial::new(r1i.clone());
+                let r1i_times_qi = r1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
+                let ct0i_hat_poly = Polynomial::new(ct0i_hat.clone());
+                let r1i_times_qi_poly = Polynomial::new(r1i_times_qi.clone());
+                let r2i_times_cyclo_poly = Polynomial::new(r2i_times_cyclo.clone());
+                let mut ct0i_calculated = ct0i_hat_poly
+                    .add(&r1i_times_qi_poly)
+                    .add(&r2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
 
                 while ct0i_calculated.len() > 0 && ct0i_calculated[0].is_zero() {
                     ct0i_calculated.remove(0);
@@ -393,12 +425,15 @@ impl InputValidationVectors {
 
                 // Calculate ct1i_hat = pk1i * ui + e1i
                 let ct1i_hat = {
-                    let pk1i_times_u = poly_mul(&pk1i, &u);
-                    assert_eq!((pk1i_times_u.len() as u64) - 1, 2 * (N - 1));
+                    let pk1i_poly = Polynomial::new(pk1i.clone());
+                    let u_poly = Polynomial::new(u.clone());
+                    let pk1i_times_u = pk1i_poly.mul(&u_poly);
+                    assert_eq!((pk1i_times_u.coefficients().len() as u64) - 1, 2 * (n - 1));
 
-                    poly_add(&pk1i_times_u, &e1)
+                    let e1_poly = Polynomial::new(e1.clone());
+                    pk1i_times_u.add(&e1_poly).coefficients().to_vec()
                 };
-                assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+                assert_eq!((ct1i_hat.len() as u64) - 1, 2 * (n - 1));
 
                 // Check whether ct1i_hat mod R_qi (the ring) is equal to ct1i
                 let mut ct1i_hat_mod_rqi = ct1i_hat.clone();
@@ -406,38 +441,66 @@ impl InputValidationVectors {
                 assert_eq!(&ct1i, &ct1i_hat_mod_rqi);
 
                 // Compute p2i numerator = ct1i - ct1i_hat
-                let ct1i_minus_ct1i_hat = poly_sub(&ct1i, &ct1i_hat);
-                assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (N - 1));
+                let ct1i_poly = Polynomial::new(ct1i.clone());
+                let ct1i_hat_poly = Polynomial::new(ct1i_hat.clone());
+                let ct1i_minus_ct1i_hat = ct1i_poly.sub(&ct1i_hat_poly).coefficients().to_vec();
+                assert_eq!((ct1i_minus_ct1i_hat.len() as u64) - 1, 2 * (n - 1));
                 let mut ct1i_minus_ct1i_hat_mod_zqi = ct1i_minus_ct1i_hat.clone();
                 reduce_and_center_coefficients_mut(&mut ct1i_minus_ct1i_hat_mod_zqi, &qi_bigint);
 
                 // Compute p2i as the quotient of numerator divided by the cyclotomic polynomial,
                 // and reduce/center the resulting coefficients to produce:
                 // (ct1i - ct1i_hat) / (x^N + 1) mod Z_qi. Remainder should be empty.
-                let (p2i, p2i_rem) = poly_div(&ct1i_minus_ct1i_hat_mod_zqi, &cyclo.clone());
-                assert!(p2i_rem.is_empty());
-                assert_eq!((p2i.len() as u64) - 1, N - 2); // Order(p2i) = N - 2
+                let ct1i_minus_ct1i_hat_poly = Polynomial::new(ct1i_minus_ct1i_hat_mod_zqi.clone());
+                let (p2i_poly, p2i_rem_poly) =
+                    ct1i_minus_ct1i_hat_poly.div(&cyclo_poly.clone()).unwrap();
+                let p2i = p2i_poly.coefficients().to_vec();
+                let p2i_rem = p2i_rem_poly.coefficients().to_vec();
+                assert!(p2i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((p2i.len() as u64) - 1, n - 2); // Order(p2i) = N - 2
 
                 // Assert that (ct1i - ct1i_hat) = (p2i * cyclo) mod Z_qi
-                let p2i_times_cyclo: Vec<BigInt> = poly_mul(&p2i, &cyclo);
+                let p2i_poly = Polynomial::new(p2i.clone());
+                let p2i_times_cyclo: Vec<BigInt> =
+                    p2i_poly.mul(&cyclo_poly).coefficients().to_vec();
                 let mut p2i_times_cyclo_mod_zqi = p2i_times_cyclo.clone();
                 reduce_and_center_coefficients_mut(&mut p2i_times_cyclo_mod_zqi, &qi_bigint);
                 assert_eq!(&ct1i_minus_ct1i_hat_mod_zqi, &p2i_times_cyclo_mod_zqi);
-                assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (N - 1));
+                assert_eq!((p2i_times_cyclo.len() as u64) - 1, 2 * (n - 1));
 
                 // Calculate p1i = (ct1i - ct1i_hat - p2i * cyclo) / qi mod Z_p. Remainder should be empty.
-                let p1i_num = poly_sub(&ct1i_minus_ct1i_hat, &p2i_times_cyclo);
-                assert_eq!((p1i_num.len() as u64) - 1, 2 * (N - 1));
+                let ct1i_minus_ct1i_hat_poly = Polynomial::new(ct1i_minus_ct1i_hat.clone());
+                let p2i_times_cyclo_poly = Polynomial::new(p2i_times_cyclo.clone());
+                let p1i_num = ct1i_minus_ct1i_hat_poly
+                    .sub(&p2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
+                assert_eq!((p1i_num.len() as u64) - 1, 2 * (n - 1));
 
-                let (p1i, p1i_rem) = poly_div(&p1i_num, &[BigInt::from(qi.modulus())]);
-                assert!(p1i_rem.is_empty());
-                assert_eq!((p1i.len() as u64) - 1, 2 * (N - 1)); // Order(p1i) = 2*(N-1)
-                assert_eq!(&p1i_num, &poly_mul(&p1i, &[qi_bigint.clone()]));
+                let p1i_num_poly = Polynomial::new(p1i_num.clone());
+                let qi_poly = Polynomial::new(vec![BigInt::from(qi.modulus())]);
+                let (p1i_poly, p1i_rem_poly) = p1i_num_poly.div(&qi_poly).unwrap();
+                let p1i = p1i_poly.coefficients().to_vec();
+                let p1i_rem = p1i_rem_poly.coefficients().to_vec();
+                assert!(p1i_rem.iter().all(|x| x.is_zero()));
+                assert_eq!((p1i.len() as u64) - 1, 2 * (n - 1)); // Order(p1i) = 2*(N-1)
+                let p1i_poly_check = Polynomial::new(p1i.clone());
+                assert_eq!(
+                    &p1i_num,
+                    &p1i_poly_check.mul(&qi_poly).coefficients().to_vec()
+                );
 
                 // Assert that ct1i = ct1i_hat + p1i * qi + p2i * cyclo mod Z_p
-                let p1i_times_qi = poly_scalar_mul(&p1i, &qi_bigint);
-                let mut ct1i_calculated =
-                    poly_add(&poly_add(&ct1i_hat, &p1i_times_qi), &p2i_times_cyclo);
+                let p1i_poly = Polynomial::new(p1i.clone());
+                let p1i_times_qi = p1i_poly.scalar_mul(&qi_bigint).coefficients().to_vec();
+                let ct1i_hat_poly = Polynomial::new(ct1i_hat.clone());
+                let p1i_times_qi_poly = Polynomial::new(p1i_times_qi.clone());
+                let p2i_times_cyclo_poly = Polynomial::new(p2i_times_cyclo.clone());
+                let mut ct1i_calculated = ct1i_hat_poly
+                    .add(&p1i_times_qi_poly)
+                    .add(&p2i_times_cyclo_poly)
+                    .coefficients()
+                    .to_vec();
 
                 while ct1i_calculated.len() > 0 && ct1i_calculated[0].is_zero() {
                     ct1i_calculated.remove(0);
@@ -612,7 +675,7 @@ impl InputValidationBounds {
         level: usize,
     ) -> Result<InputValidationBounds, Box<dyn std::error::Error>> {
         // Get cyclotomic degree and context at provided level
-        let N = BigInt::from(params.degree());
+        let n = BigInt::from(params.degree());
         let t = BigInt::from(params.plaintext());
         let ctx = params.ctx_at_level(level)?;
 
@@ -662,14 +725,14 @@ impl InputValidationBounds {
             r2_bounds[i] = qi_bound.clone();
 
             r1_low_bounds[i] = (&ptxt_low_bound * BigInt::abs(&k0qi)
-                - &((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
+                - &((&n * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
             r1_up_bounds[i] = (&ptxt_up_bound * BigInt::abs(&k0qi)
-                + ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound))
+                + ((&n * &gauss_bound + 2) * &qi_bound + &gauss_bound))
                 / &qi_bigint;
 
             p2_bounds[i] = qi_bound.clone();
-            p1_bounds[i] = ((&N * &gauss_bound + 2) * &qi_bound + &gauss_bound) / &qi_bigint;
+            p1_bounds[i] = ((&n * &gauss_bound + 2) * &qi_bound + &gauss_bound) / &qi_bigint;
         }
 
         Ok(InputValidationBounds {
@@ -886,7 +949,7 @@ impl InputValidationBounds {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Set up the BFV parameters
-    let N: u64 = 1024;
+    let n: u64 = 1024;
 
     //let plaintext_modulus: u64 = 65537;
     let plaintext_modulus: u64 = 2048;
@@ -920,7 +983,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let moduli_sizes = [20];
 
     let params = BfvParametersBuilder::new()
-        .set_degree(N as usize)
+        .set_degree(n as usize)
         .set_plaintext_modulus(plaintext_modulus)
         .set_moduli(&moduli)
         //.set_moduli_sizes(&moduli_sizes)
@@ -938,7 +1001,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pk = PublicKey::new(&sk, &mut rng);
 
     //Sample a message and encrypt
-    let m = t.random_vec(N as usize, &mut rng);
+    let m = t.random_vec(n as usize, &mut rng);
     //let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
     let pt = Plaintext::try_encode(&m, Encoding::poly(), &params)?;
 
@@ -963,7 +1026,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let res = InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk)?;
 
     // Create output json with standard form polynomials
-    let json_data = res.standard_form(&p).to_json();
+    let _json_data = res.standard_form(&p).to_json();
 
     // Calculate bounds ---------------------------------------------------------------------
     let bounds = InputValidationBounds::compute(&params, pt.level())?;
@@ -992,7 +1055,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let filename_constants = format!(
         "pk_enc_constants_{}_{}x{}_{}.nr",
-        N,
+        n,
         moduli.len(),
         moduli_bitsize,
         t.modulus()
@@ -1008,24 +1071,6 @@ fn to_string_1d_vec(poly: &Vec<BigInt>) -> Vec<String> {
 
 fn to_string_2d_vec(poly: &Vec<Vec<BigInt>>) -> Vec<Vec<String>> {
     poly.iter().map(|row| to_string_1d_vec(row)).collect()
-}
-
-/// Writes the given JSON data to a file in the specified output path.
-///
-/// # Arguments
-///
-/// * `output_path` - A reference to the base directory path where the file will be created.
-/// * `filename` - The name of the file to create.
-/// * `json_data` - A reference to the JSON data to be written into the file.
-///
-/// # Panics
-///
-/// This function will panic if the file cannot be created or if writing to the file fails.
-fn write_json_to_file(output_path: &Path, filename: &str, json_data: &serde_json::Value) {
-    let file_path = output_path.join(filename);
-    let mut file = File::create(file_path).expect("Unable to create file");
-    file.write_all(serde_json::to_string_pretty(json_data).unwrap().as_bytes())
-        .expect("Unable to write data");
 }
 
 #[derive(serde::Serialize)]
