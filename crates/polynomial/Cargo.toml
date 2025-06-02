@@ -4,7 +4,13 @@ description = "Polynomial arithmetic modulo operations to support Greco constant
 version.workspace = true
 edition.workspace = true
 license = "MIT"
+authors = ["Gnosis Guild / Enclave"]
 
 [dependencies]
-num-bigint = { workspace = true }
+num-bigint = { workspace = true, features = ["serde"] }
 num-traits = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "num-bigint/serde"]
