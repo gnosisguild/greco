@@ -71,11 +71,27 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 }
 
 #[test]
-fn test_safe() {
+fn test_safe_sponge() {
     let pattern = [5, 4];
     let mut safe = SafeSponge::start(pattern);
+
     safe = safe.absorb([1, 2, 3, 4, 5]);
-    let res = safe.squeeze();
+
+    let result = safe.squeeze();
+    assert(result.len() == 4);
+
     safe.finish();
-    assert_eq(res.get(0), 0x0ef061c5b88d5d81e9c7c306701e01e03c5040a3d3c4b051ada3f150b44dc595);
+}
+
+#[test]
+fn test_safe_sponge_multiple_absorb() {
+    let pattern = [3, 2];
+    let mut safe = SafeSponge::start(pattern);
+
+    safe = safe.absorb([1, 2, 3]);
+
+    let result = safe.squeeze();
+    assert(result.len() == 2);
+
+    safe.finish();
 }

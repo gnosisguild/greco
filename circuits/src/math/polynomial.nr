@@ -42,21 +42,45 @@ impl<let N: u32> Polynomial<N> {
 }
 
 #[test]
-// Tests single bound check and double bounds check with a small Polynomial
-fn test_polynomial_bounds() {
-    let mut coeffs = [-16, 240, 242];
+fn test_polynomial_eval() {
+    let coeffs = [1, 2, 3]; // represents 1x^2 + 2x + 3
+    let poly = Polynomial::new(coeffs);
 
-    let mut poly = Polynomial::new(coeffs);
+    let x = 2; // evaluate at x = 2
+    let result = poly.eval(x);
+    // (1 * 2^2) + (2 * 2) + 3 = 4 + 4 + 3 = 11
+    assert_eq(result, 11);
+}
+
+#[test]
+fn test_polynomial_bounds() {
+    let coeffs = [-16, 240, 242];
+    let poly = Polynomial::new(coeffs);
+
+    // Test single bound check
     poly.range_check_1bound(242);
+
+    // Test double bounds check
     poly.range_check_2bounds(242, -16);
 }
 
 #[test]
-// Tests polynomial evaluation on a random small number
-fn test_polynomial_eval() {
-    let mut coeffs = [1, 2, 3];
-    let mut poly = Polynomial::new(coeffs);
+fn test_polynomial_eval_zero() {
+    let coeffs = [1, -2, 1]; // x^2 - 2x + 1 = (x-1)^2
+    let poly = Polynomial::new(coeffs);
 
-    let eval = poly.eval(3);
-    assert_eq(eval as u64, 18);
+    let x = 1; // evaluate at x = 1, should be 0
+    let result = poly.eval(x);
+    assert_eq(result, 0);
+}
+
+#[test]
+fn test_polynomial_eval_large() {
+    let coeffs = [1000000, -500000, 250000]; // large coefficients
+    let poly = Polynomial::new(coeffs);
+
+    let x = 2;
+    let result = poly.eval(x);
+    // 1000000*2^2 - 500000*2 + 250000 = 4000000 - 1000000 + 250000 = 3250000
+    assert_eq(result, 3250000);
 }
