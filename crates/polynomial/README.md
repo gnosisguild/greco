@@ -102,16 +102,6 @@ This library is specifically designed for:
 - **Lattice Cryptography**: Polynomial operations in cyclotomic rings
 - **Cryptographic Research**: Experimenting with polynomial-based cryptographic primitives
 
-## Contributing
-
-Contributions are welcome! Please ensure that:
-
-1. All tests pass: `cargo test`
-2. Code is properly formatted: `cargo fmt`
-3. No clippy warnings: `cargo clippy`
-4. New features include comprehensive tests
-5. Documentation is updated for API changes
-
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](../../LICENSE) file for details.
