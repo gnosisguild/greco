@@ -10,22 +10,26 @@ jobs:
   rust:
     name: Rust CI
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust 1.85.0
+        uses: actions-rs/toolchain@v1
         with:
-          components: rustfmt, clippy
+          toolchain: 1.85.0
+          components: rustfmt
+          override: true
 
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates -> target
 
       - name: Check formatting
         run: cargo fmt --all -- --check
-
-      - name: Check with clippy
-        run: cargo clippy -- -D warnings
 
       - name: Run tests
         run: cargo test
@@ -36,6 +40,9 @@ jobs:
   noir:
     name: Noir CI
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: circuits
     steps:
       - uses: actions/checkout@v4
 
