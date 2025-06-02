@@ -2,6 +2,8 @@
 pub global N: u32 = 1024;
 /// `L` is the dimension size of the polynomials.
 pub global L: u32 = 2;
+/// `q_mod_t` is the remainder of the ciphertext modulus `q` divided by the plaintext modulus `t`.
+pub global Q_MOD_T: Field = 1;
 /// The coefficients of the polynomial `pk0is` and `pk1is` should exist in the interval `[-PK_BOUND, PK_BOUND]`.
 pub global PK_BOUND: [u64; 2] = [2251799812767744, 2251799813160960];
 /// The coefficients of the polynomial `e` should exist in the interval `[-E_BOUND, E_BOUND]` where `E_BOUND` is the upper bound of the gaussian distribution with Sigma = 3.2.
@@ -24,5 +26,7 @@ pub global K1_UP_BOUND: u64 = 1023;
 pub global QIS: [Field; 2] = [4503599625535489, 4503599626321921];
 /// List of scalars `k0is` such that `k0i[i]` is equal to the negative of the multiplicative inverses of t mod qi.
 pub global K0IS: [Field; 2] = [2199023254656, 2199023255040];
+/// Size of the payload.
+pub global SIZE: u32 = 24568;
 /// Constant value for the SAFE sponge algorithm.
-pub global TAG: Field = 16232883306424839773379165536863;
+pub global TAG: Field = 14699256703807541932168660170536;
