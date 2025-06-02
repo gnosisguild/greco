@@ -1,4 +1,4 @@
 target
 Prover.toml
-# @todo rename scripts to something more meaningful
-crates/scripts
+crates/**/constants.nr
+crates/**/Prover.toml
