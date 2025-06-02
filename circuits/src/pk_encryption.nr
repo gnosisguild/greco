@@ -64,9 +64,6 @@ impl BfvPkEncryptionCircuit {
 
     pub fn correct_encryption(self) {
         // Binary check
-        println(
-            self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]),
-        );
         assert(0 == self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]));
 
         // Bound check
