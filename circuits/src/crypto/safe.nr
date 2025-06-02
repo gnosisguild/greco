@@ -1,4 +1,4 @@
-use super::constants::TAG;
+use crate::constants::TAG;
 use poseidon::poseidon2_permutation;
 
 global RATE: u32 = 3;
