@@ -74,11 +74,15 @@ impl<let L: u32, let S: u32> SafeSponge<L, S> {
 fn test_safe_sponge() {
     let pattern = [5, 4];
     let mut safe = SafeSponge::start(pattern);
-
     safe = safe.absorb([1, 2, 3, 4, 5]);
 
     let result = safe.squeeze();
+
     assert(result.len() == 4);
+    assert(result.get(0) == 0x2ab2e2868c2490af2e13c32a0ba0852fe8d6b0979baa5831134e59029de898ab);
+    assert(result.get(1) == 0x49eacd210d0bd4ae8609da50602d3144fca0ad09b77fbf3d7186068ffd374c);
+    assert(result.get(2) == 0x16e39eccdecf20ef20ab765865573ffa55ad04b6e3dc44eaa2ee9a764e5f7159);
+    assert(result.get(3) == 0x218adb7f25e9d014affbc444372dedcfbe9767fbf41c25412bd5bf99200be37f);
 
     safe.finish();
 }
@@ -87,11 +91,12 @@ fn test_safe_sponge() {
 fn test_safe_sponge_multiple_absorb() {
     let pattern = [3, 2];
     let mut safe = SafeSponge::start(pattern);
-
     safe = safe.absorb([1, 2, 3]);
-
     let result = safe.squeeze();
+
     assert(result.len() == 2);
+    assert(result.get(0) == 0x0b6756778988e5a5f2127f26baf7b2056dcd9e26b7eff2716d47f3e8c4a9c38e);
+    assert(result.get(1) == 0x20bd726a0eed7e98a62845891b62bee66ceab93fc41829acfef50a29e63fae0b);
 
     safe.finish();
 }
