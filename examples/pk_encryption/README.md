@@ -28,9 +28,7 @@ The circuit takes several inputs:
 nargo compile
 ```
 
-3. To generate valid inputs for the circuit:
-
-From the project root, run:
+**optional** You may want to generate valid inputs for the circuit with a different set of parameters from the standard `Prover.toml` we provide for this example. If that's the case, from the project root, run:
 
 ```bash
 cargo run --bin generator -- -o ../examples/pk_encryption/Prover.toml && rm -rf ../examples/pk_encryption/constants.nr
@@ -38,13 +36,13 @@ cargo run --bin generator -- -o ../examples/pk_encryption/Prover.toml && rm -rf 
 
 This will create a `Prover.toml` file with the necessary polynomial inputs formatted for the circuit (we remove the `constants.nr` since they are not necessary).
 
-4. Execute the circuit:
+3. Execute the circuit:
 
 ```bash
 nargo execute
 ```
 
-5. Generate the proof:
+4. Generate the proof:
 
 ```bash
 bb prove -b ./target/pk_encryption.json -w ./target/pk_encryption.gz -o ./target

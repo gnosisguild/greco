@@ -1,4 +1,5 @@
 target
 Prover.toml
+!examples/**/Prover.toml
 crates/**/constants.nr
 crates/**/Prover.toml
