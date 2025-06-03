@@ -98,5 +98,6 @@ jobs:
         working-directory: examples/pk_encryption
         run: |
           nargo compile
+          nargo execute
           bb prove -b ./target/pk_encryption.json -w ./target/pk_encryption.gz -o ./target
           bb verify -k ./target/vk -p ./target/proof
