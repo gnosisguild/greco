@@ -41,6 +41,8 @@ pub struct InputValidationBounds {
     pub r2_bounds: Vec<u64>,
     pub p1_bounds: Vec<u64>,
     pub p2_bounds: Vec<u64>,
+    pub q_mod_t: BigUint,
+    pub size: usize,
     pub k0is: Vec<u64>,
     pub tag: BigUint,
 }
@@ -171,6 +173,8 @@ impl InputValidationBounds {
         let n = BigInt::from(params.degree());
         let t = BigInt::from(params.plaintext());
         let ctx = params.ctx_at_level(level)?;
+
+        let q_mod_t = BigUint::from(ctx.modulus() % params.plaintext());
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.
@@ -309,6 +313,8 @@ impl InputValidationBounds {
             r2_bounds: r2_bounds_u64,
             p1_bounds: p1_bounds_u64,
             p2_bounds: p2_bounds_u64,
+            q_mod_t,
+            size,
             k0is,
             tag,
         })

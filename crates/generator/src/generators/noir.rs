@@ -38,6 +38,10 @@ impl NoirGenerator {
         writeln!(file, "/// `L` is the dimension size of the polynomials.")?;
         writeln!(file, "pub global L: u32 = {};", bounds.moduli.len())?;
 
+        // Q_MOD_T
+        writeln!(file, "/// `q_mod_t` is the remainder of the ciphertext modulus `q` divided by the plaintext modulus `t`.")?;
+        writeln!(file, "pub global Q_MOD_T: Field = {};", bounds.q_mod_t)?;
+
         // PK bounds
         writeln!(file, "/// The coefficients of the polynomial `pk0is` and `pk1is` should exist in the interval `[-PK_BOUND, PK_BOUND]`.")?;
         write!(
@@ -172,6 +176,10 @@ impl NoirGenerator {
             write!(file, "{}", k0)?;
         }
         writeln!(file, "];")?;
+
+        // SIZE of the payload
+        writeln!(file, "/// Size of the payload.")?;
+        writeln!(file, "pub global SIZE: u32 = {:?};", bounds.size)?;
 
         // TAG constant
         writeln!(file, "/// Constant value for the SAFE sponge algorithm.")?;

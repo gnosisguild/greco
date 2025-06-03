@@ -69,8 +69,7 @@ impl BfvHelper {
         let pk = PublicKey::new(&sk, &mut rng);
 
         // Create a sample plaintext with random values
-        let t = Modulus::new(self.params.plaintext())?;
-        let message_data = t.random_vec(self.params.degree(), &mut rng);
+        let message_data = vec![1u64; self.params.degree() as usize];
         let pt = Plaintext::try_encode(&message_data, Encoding::poly(), &self.params)?;
 
         // Use extended encryption to get the polynomial data

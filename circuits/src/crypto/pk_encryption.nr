@@ -1,12 +1,9 @@
 use crate::constants::{
-    E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, QIS,
-    R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, U_BOUND,
+    E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, Q_MOD_T, QIS,
+    R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, SIZE, U_BOUND,
 };
 use crate::crypto::safe::SafeSponge;
 use crate::math::polynomial::Polynomial;
-
-// Total size of the all polynomial's coefficients.
-global size: u32 = (10 * L + 4) * N - 8;
 
 /// BfvPkEncryption circuit structure
 pub struct BfvPkEncryptionCircuit {
@@ -44,8 +41,8 @@ impl BfvPkEncryptionCircuit {
     }
 
     /// Assigns all the witness polynomial coefficients to an array
-    fn payload(self) -> [Field; size] {
-        let mut inputs = [0; size];
+    fn payload(self) -> [Field; SIZE] {
+        let mut inputs = [0; SIZE];
         let mut offset = 0;
 
         let (inputs, offset) = flatten(inputs, self.pk0is, offset);
@@ -65,6 +62,9 @@ impl BfvPkEncryptionCircuit {
     }
 
     pub fn correct_encryption(self) {
+        // Binary check
+        assert(0 == self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]));
+
         // Bound check
         self.u.range_check_1bound(U_BOUND);
         self.e0.range_check_1bound(E_BOUND);
@@ -82,7 +82,7 @@ impl BfvPkEncryptionCircuit {
 
         // We assign all the coefficients to an array to generate challenge values
         let inputs = self.payload();
-        let mut safe = SafeSponge::start([size, 2 * L]);
+        let mut safe = SafeSponge::start([SIZE, 2 * L]);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
 
@@ -156,10 +156,10 @@ impl BfvPkEncryptionCircuit {
 /// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
 /// ```
 fn flatten<let N: u32, let L: u32>(
-    mut inputs: [Field; size],
+    mut inputs: [Field; SIZE],
     poly: [Polynomial<N>; L],
     mut offset: u32,
-) -> ([Field; size], u32) {
+) -> ([Field; SIZE], u32) {
     for j in 0..L {
         for i in 0..N {
             inputs[i + offset] = poly[j].coefficients[i];
