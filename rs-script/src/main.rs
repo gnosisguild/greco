@@ -725,6 +725,10 @@ impl InputValidationBounds {
         writeln!(file, "/// `L` is the dimension size of the polynomials. ")?;
         writeln!(file, "pub global L: u32 = {};", self.pk.len())?;
 
+        let q_mod_t = BigUint::from(ctx.modulus() % params.plaintext());
+        writeln!(file, "/// `q_mod_t` is the remainder of the ciphertext modulus `q` divided by the plaintext modulus `t`.")?;
+        writeln!(file, "pub global Q_MOD_T: Field = {};", q_mod_t)?;
+
         let pk_bound_str = self
             .pk
             .iter()
@@ -856,7 +860,11 @@ impl InputValidationBounds {
                 .collect::<Vec<u8>>(),
         );
         let _domain_seperator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
+
         let size = (10 * self.pk.len() + 4) * params.degree() - 8;
+        writeln!(file, "/// Size of the payload.")?;
+        writeln!(file, "pub global SIZE: u32 = {:?};", size)?;
+
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
             BigUint::from_usize(2 * self.pk.len()).unwrap(),
@@ -929,7 +937,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pk = PublicKey::new(&sk, &mut rng);
 
     //Sample a message and encrypt
-    let m = t.random_vec(N as usize, &mut rng);
+    //let m = t.random_vec(N as usize, &mut rng);
+    let m = vec![1; N as usize];
     //let m: Vec<i64> = (-(N as i64 / 2)..(N as i64 / 2)).collect(); // m here is from lowest degree to largest as input into fhe.rs (REQUIRED)
     let pt = Plaintext::try_encode(&m, Encoding::poly(), &params)?;
 
