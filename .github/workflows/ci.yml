@@ -78,9 +78,12 @@ jobs:
           override: true
 
       - name: Install Nargo
-        uses: noir-lang/noirup@v0.1.3
-        with:
-          toolchain: stable
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
+          echo "$HOME/.nargo" >> $GITHUB_PATH
+          export PATH="$HOME/.nargo:$PATH"
+          noirup
+          nargo --version
 
       - name: Install bbup (Barretenberg)
         run: |
