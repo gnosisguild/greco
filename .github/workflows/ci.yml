@@ -65,6 +65,7 @@ jobs:
   noir-examples:
     name: Noir Examples CI
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: examples
@@ -102,3 +103,5 @@ jobs:
           bb prove -b ./target/pk_encryption.json -w ./target/pk_encryption.gz -o ./target
           bb write_vk -b ./target/pk_encryption.json -o ./target
           bb verify -k ./target/vk -p ./target/proof
+        timeout-minutes: 15
+        continue-on-error: false
