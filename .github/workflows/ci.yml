@@ -91,6 +91,15 @@ jobs:
           bbup
           bb --version
 
+      - name: Increase swapfile
+        run: |
+          sudo swapoff -a
+          sudo fallocate -l 15G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          sudo swapon --show
+
       - name: Generate Prover.toml
         working-directory: crates
         run: cargo run --bin generator -- -o ../examples/pk_encryption && rm -rf ../examples/pk_encryption/constants.nr
