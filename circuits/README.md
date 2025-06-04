@@ -2,6 +2,13 @@
 
 A Noir library implementing zero-knowledge circuits for proving correct ciphertext encryption under BFV public key homomorphic encryption.
 
+## ⚠️ Important Disclaimer
+
+> **Warning:** By default, this circuit enforces a binary check (only accepts `0` or `1`) for data validation.  
+> If you remove that check (in `circuits/src/crypto/pk_encryption.nr`), the circuit will no longer verify that inputs are strictly `0` or `1`.  
+> _Proceed with caution_: you are responsible for ensuring all inputs are valid and safe for your desired use case.
+
+
 ## Features
 
 - **BFV Encryption Circuit**: Proves correct encryption of ciphertexts under BFV scheme
