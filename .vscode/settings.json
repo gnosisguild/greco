@@ -1,0 +1,7 @@
+{
+  "editor.formatOnSave": true,
+  "rust-analyzer.linkedProjects": ["crates/Cargo.toml"],
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  }
+}
