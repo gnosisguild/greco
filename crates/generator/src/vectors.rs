@@ -101,8 +101,8 @@ impl InputValidationVectors {
     /// Returns a `serde_json::Value` representing the JSON serialization of the `InputValidationVectors`.
     pub fn to_json(&self) -> serde_json::Value {
         json!({
-            "pk0i": to_string_2d_vec(&self.pk0is),
-            "pk1i": to_string_2d_vec(&self.pk1is),
+            "pk0is": to_string_2d_vec(&self.pk0is),
+            "pk1is": to_string_2d_vec(&self.pk1is),
             "u": to_string_1d_vec(&self.u),
             "e0": to_string_1d_vec(&self.e0),
             "e1": to_string_1d_vec(&self.e1),
@@ -111,6 +111,7 @@ impl InputValidationVectors {
             "r1is": to_string_2d_vec(&self.r1is),
             "p2is": to_string_2d_vec(&self.p2is),
             "p1is": to_string_2d_vec(&self.p1is),
+            "k0is": to_string_1d_vec(&self.k0is),
             "ct0is": to_string_2d_vec(&self.ct0is),
             "ct1is": to_string_2d_vec(&self.ct1is),
         })
@@ -613,7 +614,8 @@ mod tests {
 
         // Check all required fields are present
         let required_fields = [
-            "pk0i", "pk1i", "u", "e0", "e1", "k1", "r2is", "r1is", "p2is", "p1is", "ct0is", "ct1is",
+            "pk0is", "pk1is", "u", "e0", "e1", "k1", "r2is", "r1is", "p2is", "p1is", "k0is",
+            "ct0is", "ct1is",
         ];
 
         for field in required_fields.iter() {
