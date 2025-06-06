@@ -1,3 +1,3 @@
-pub mod polynomial;
-pub mod pk_encryption;
-pub mod safe;
+pub mod constants;
+pub mod crypto;
+pub mod math;

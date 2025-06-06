@@ -1,3 +1,5 @@
-/rs-script/target
-/rs-script/scripts
-/circuits/target
+target
+Prover.toml
+!examples/**/Prover.toml
+crates/**/constants.nr
+crates/**/Prover.toml

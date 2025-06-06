@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "generator",
+    "polynomial"
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+polynomial = { package = "e3-greco-polynomial", path = "./polynomial" }
+generator = { package = "e3-greco-generator", path = "./generator" }
+fhe = { git = "https://github.com/gnosisguild/fhe.rs" }
+fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs" }
+fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git" }
+serde_json = "1.0.133"
+rand = "0.8.5"
+serde = { version = "1.0.208", features = ["derive"] }
+num-bigint = "0.4.6"
+num-traits = "0.2"
+ndarray = "0.16.1"
+itertools = "0.14.0"
+rayon = "1.10.0"
+toml = "0.8"
+blake3 = "1.8.2"
