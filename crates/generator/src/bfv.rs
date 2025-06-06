@@ -6,7 +6,7 @@
 use fhe::bfv::{
     BfvParameters, BfvParametersBuilder, Ciphertext, Encoding, Plaintext, PublicKey, SecretKey,
 };
-use fhe_math::{rq::Poly, zq::Modulus};
+use fhe_math::rq::Poly;
 use fhe_traits::*;
 use num_bigint::BigInt;
 use num_traits::Num;

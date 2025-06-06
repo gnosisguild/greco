@@ -45,13 +45,57 @@ let results = generate_all_outputs(config, GeneratorConfig::default())?;
 
 ## Quick Start
 
-1. Install dependencies:
+### Prerequisites
+
+1. Install Rust:
 
 ```bash
-cargo build --workspace
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-2. Generate parameters:
+2. Install Noir using noirup:
+
+```bash
+curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash
+noirup
+```
+
+3. Install Barretenberg (BB) proving backend:
+
+```bash
+curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/master/barretenberg/bbup/install | bash
+bbup
+```
+
+### Building and Testing
+
+1. Build and test Rust components:
+
+```bash
+# Build all Rust components
+cargo build
+
+# Run Rust tests
+cargo test
+
+# Check Rust formatting
+cargo fmt --check
+```
+
+2. Build and test Noir circuits:
+
+```bash
+# Check Noir formatting
+nargo fmt --check
+
+# Build Noir circuits
+nargo check
+
+# Run Noir tests
+nargo test
+```
+
+3. Generate parameters:
 
 ```bash
 cargo run --bin generator

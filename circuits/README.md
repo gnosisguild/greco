@@ -5,9 +5,8 @@ A Noir library implementing zero-knowledge circuits for proving correct cipherte
 ## ⚠️ Important Disclaimer
 
 > **Warning:** By default, this circuit enforces a binary check (only accepts `0` or `1`) for data validation.  
-> If you remove that check (in `circuits/src/crypto/pk_encryption.nr`), the circuit will no longer verify that inputs are strictly `0` or `1`.  
+> If you remove that check (in the root Noir files), the circuit will no longer verify that inputs are strictly `0` or `1`.  
 > _Proceed with caution_: you are responsible for ensuring all inputs are valid and safe for your desired use case.
-
 
 ## Features
 
@@ -19,17 +18,12 @@ A Noir library implementing zero-knowledge circuits for proving correct cipherte
 
 ## Structure
 
-```
-circuits/
-├── src/
-│   ├── crypto/
-│   │   ├── pk_encryption.nr   # BFV encryption circuit
-│   │   └── safe.nr            # SAFE sponge implementation
-│   ├── math/
-│   │   └── polynomial.nr      # Polynomial arithmetic
-│   ├── constants.nr           # BFV parameters and bounds
-│   └── lib.nr                 # Library entry point
-```
+The Noir circuits are now located in the root directory of the project. The main components are:
+
+- `crypto/pk_encryption.nr`: BFV encryption circuit
+- `crypto/safe.nr`: SAFE sponge implementation
+- `math/polynomial.nr`: Polynomial arithmetic
+- `constants.nr`: BFV parameters and bounds
 
 ## Usage
 
@@ -37,15 +31,15 @@ Add this to your `Nargo.toml`:
 
 ```toml
 [dependencies]
-circuits = { tag = "v0.1.0", git = "https://github.com/gnosisguild/greco" }
+greco = { tag = "v0.1.0", git = "https://github.com/gnosisguild/greco" }
 ```
 
 Basic usage:
 
 ```rust
-use circuits::constants::{L, N};
-use circuits::crypto::pk_encryption::BfvPkEncryptionCircuit;
-use circuits::math::polynomial::Polynomial;
+use greco::constants::{L, N};
+use greco::crypto::pk_encryption::BfvPkEncryptionCircuit;
+use greco::math::polynomial::Polynomial;
 
 // Create polynomials for public keys, ciphertexts, etc.
 let circuit = BfvPkEncryptionCircuit::new(
@@ -71,14 +65,6 @@ The circuits implement zero-knowledge proofs for polynomial operations in rings 
 1. **Polynomial Circuit**: Handles polynomial arithmetic and range checks
 2. **SAFE Sponge**: Implements the SAFE sponge construction for generating challenge values
 3. **BFV Encryption**: Proves correct encryption under the BFV scheme
-
-## Testing
-
-Run the test suite:
-
-```bash
-nargo test
-```
 
 ## License
 

@@ -2,6 +2,7 @@
 name = "greco"
 version = "0.1.0"
 type = "lib"
+entry = "circuits/lib.nr"
 authors = ["Gnosis Guild / Enclave"]
 license = "MIT"
 

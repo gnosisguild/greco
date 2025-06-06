@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "generator",
-    "polynomial"
+    "crates/generator",
+    "crates/polynomial"
 ]
 resolver = "2"
 
@@ -10,8 +10,8 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-polynomial = { package = "e3-greco-polynomial", path = "./polynomial" }
-generator = { package = "e3-greco-generator", path = "./generator" }
+polynomial = { package = "e3-greco-polynomial", path = "./crates/polynomial" }
+generator = { package = "e3-greco-generator", path = "./crates/generator" }
 fhe = { git = "https://github.com/gnosisguild/fhe.rs" }
 fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs" }
 fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git" }
