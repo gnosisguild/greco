@@ -68,8 +68,14 @@ impl BfvHelper {
         let sk = SecretKey::random(&self.params, &mut rng);
         let pk = PublicKey::new(&sk, &mut rng);
 
-        // Create a sample plaintext with random values
-        let message_data = vec![1u64; self.params.degree() as usize];
+        // Create a sample plaintext with some random values, in here we are assiging 3 to all the
+        // coefficients
+        let mut message_data = vec![3u64; self.params.degree() as usize];
+
+        //For Crisp, the user casts the vote in the right coefficient (message_data[0]). A vote is
+        //a value in {0,1}. Any other value will result in a proof that will be rejected by the Verifier.
+        message_data[0] = 1;
+
         let pt = Plaintext::try_encode(&message_data, Encoding::poly(), &self.params)?;
 
         // Use extended encryption to get the polynomial data

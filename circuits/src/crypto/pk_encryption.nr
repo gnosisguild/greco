@@ -45,24 +45,25 @@ impl BfvPkEncryptionCircuit {
         let mut inputs = [0; SIZE];
         let mut offset = 0;
 
-        let (inputs, offset) = flatten(inputs, self.pk0is, offset);
-        let (inputs, offset) = flatten(inputs, self.pk1is, offset);
-        let (inputs, offset) = flatten(inputs, self.ct0is, offset);
-        let (inputs, offset) = flatten(inputs, self.ct1is, offset);
-        let (inputs, offset) = flatten(inputs, [self.e0], offset);
-        let (inputs, offset) = flatten(inputs, [self.e1], offset);
-        let (inputs, offset) = flatten(inputs, [self.u], offset);
-        let (inputs, offset) = flatten(inputs, [self.k1], offset);
-        let (inputs, offset) = flatten(inputs, self.r1is, offset);
-        let (inputs, offset) = flatten(inputs, self.r2is, offset);
-        let (inputs, offset) = flatten(inputs, self.p1is, offset);
-        let (inputs, _offset) = flatten(inputs, self.p2is, offset);
+        let (inputs, offset) = flatten1(inputs, self.pk0is, offset);
+        let (inputs, offset) = flatten1(inputs, self.pk1is, offset);
+        let (inputs, offset) = flatten1(inputs, self.ct0is, offset);
+        let (inputs, offset) = flatten1(inputs, self.ct1is, offset);
+        let (inputs, offset) = flatten2(inputs, self.e0, offset);
+        let (inputs, offset) = flatten2(inputs, self.e1, offset);
+        let (inputs, offset) = flatten2(inputs, self.u, offset);
+        let (inputs, offset) = flatten2(inputs, self.k1, offset);
+        let (inputs, offset) = flatten3(inputs, self.r1is, offset);
+        let (inputs, offset) = flatten4(inputs, self.r2is, offset);
+        let (inputs, offset) = flatten3(inputs, self.p1is, offset);
+        let (inputs, _offset) = flatten4(inputs, self.p2is, offset);
 
         inputs
     }
 
     pub fn correct_encryption(self) {
         // Binary check
+
         assert(0 == self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]));
 
         // Bound check
@@ -155,7 +156,7 @@ impl BfvPkEncryptionCircuit {
 /// ```rust
 /// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
 /// ```
-fn flatten<let N: u32, let L: u32>(
+fn flatten1<let N: u32, let L: u32>(
     mut inputs: [Field; SIZE],
     poly: [Polynomial<N>; L],
     mut offset: u32,
@@ -165,6 +166,53 @@ fn flatten<let N: u32, let L: u32>(
             inputs[i + offset] = poly[j].coefficients[i];
         }
         offset += N;
+    }
+
+    (inputs, offset)
+}
+
+fn flatten2<let N: u32, let L: u32>(
+    mut inputs: [Field; SIZE],
+    poly: Polynomial<N>,
+    mut offset: u32,
+) -> ([Field; SIZE], u32) {
+        for i in 0..N {
+            inputs[i + offset] = poly.coefficients[i];
+        }
+        offset += N;
+
+    (inputs, offset)
+}
+
+fn flatten3<let N: u32, let L: u32>(
+    mut inputs: [Field; SIZE],
+    poly: [Polynomial<2*N - 1>; L],
+    mut offset: u32,
+) -> ([Field; SIZE], u32) {
+	
+    let bound_N = 2*N - 1;
+    for j in 0..L {
+        for i in 0..bound_N {
+            inputs[i + offset] = poly[j].coefficients[i];
+        }
+        offset += bound_N;
+    }
+
+    (inputs, offset)
+}
+
+fn flatten4<let N: u32, let L: u32>(
+    mut inputs: [Field; SIZE],
+    poly: [Polynomial<N - 1>; L],
+    mut offset: u32,
+) -> ([Field; SIZE], u32) {
+	
+    let bound_N = N - 1;
+    for j in 0..L {
+        for i in 0..bound_N {
+            inputs[i + offset] = poly[j].coefficients[i];
+        }
+        offset += bound_N;
     }
 
     (inputs, offset)
