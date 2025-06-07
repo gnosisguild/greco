@@ -177,7 +177,6 @@ impl InputValidationBounds {
         let ctx = params.ctx_at_level(level)?;
 
         let half_modulus = params.plaintext() / 2;
-        //let half_modulus = params.plaintext() / BigUint::from(2);
         let q_mod_t = reduce_and_center(
             &BigInt::from(ctx.modulus().clone()),
             &BigInt::from(params.plaintext()),
@@ -289,7 +288,6 @@ impl InputValidationBounds {
         let _domain_separator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
 
         let size = (10 * params.degree() - 4) * pk_bounds.len() + 4 * params.degree();
-        //let size = (10 * pk_bounds.len() + 4) * params.degree() - 8;
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
             BigUint::from_usize(2 * pk_bounds.len()).unwrap(),
