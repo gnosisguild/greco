@@ -176,21 +176,20 @@ fn flatten2<let N: u32, let L: u32>(
     poly: Polynomial<N>,
     mut offset: u32,
 ) -> ([Field; SIZE], u32) {
-        for i in 0..N {
-            inputs[i + offset] = poly.coefficients[i];
-        }
-        offset += N;
+    for i in 0..N {
+        inputs[i + offset] = poly.coefficients[i];
+    }
+    offset += N;
 
     (inputs, offset)
 }
 
 fn flatten3<let N: u32, let L: u32>(
     mut inputs: [Field; SIZE],
-    poly: [Polynomial<2*N - 1>; L],
+    poly: [Polynomial<2 * N - 1>; L],
     mut offset: u32,
 ) -> ([Field; SIZE], u32) {
-	
-    let bound_N = 2*N - 1;
+    let bound_N = 2 * N - 1;
     for j in 0..L {
         for i in 0..bound_N {
             inputs[i + offset] = poly[j].coefficients[i];
@@ -206,7 +205,6 @@ fn flatten4<let N: u32, let L: u32>(
     poly: [Polynomial<N - 1>; L],
     mut offset: u32,
 ) -> ([Field; SIZE], u32) {
-	
     let bound_N = N - 1;
     for j in 0..L {
         for i in 0..bound_N {

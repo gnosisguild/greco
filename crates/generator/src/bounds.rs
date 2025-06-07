@@ -7,7 +7,9 @@ use blake3::Hasher;
 use fhe::bfv::BfvParameters;
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, Signed, ToPrimitive};
-use polynomial::{reduce_and_center, range_check_centered, range_check_standard, range_check_standard_2bounds};
+use polynomial::{
+    range_check_centered, range_check_standard, range_check_standard_2bounds, reduce_and_center,
+};
 use std::sync::Arc;
 
 use crate::vectors::InputValidationVectors;
@@ -174,11 +176,13 @@ impl InputValidationBounds {
         let t = BigInt::from(params.plaintext());
         let ctx = params.ctx_at_level(level)?;
 
-
-
-        let half_modulus = params.plaintext() / 2;  
-        //let half_modulus = params.plaintext() / BigUint::from(2);  
-        let q_mod_t = reduce_and_center(&BigInt::from(ctx.modulus().clone()), &BigInt::from(params.plaintext()) , &BigInt::from(half_modulus));
+        let half_modulus = params.plaintext() / 2;
+        //let half_modulus = params.plaintext() / BigUint::from(2);
+        let q_mod_t = reduce_and_center(
+            &BigInt::from(ctx.modulus().clone()),
+            &BigInt::from(params.plaintext()),
+            &BigInt::from(half_modulus),
+        );
         //let q_mod_t = BigUint::from(ctx.modulus() % params.plaintext());
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
@@ -284,7 +288,7 @@ impl InputValidationBounds {
         );
         let _domain_separator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
 
-        let size = (10 * params.degree() - 4) * pk_bounds.len() + 4 * params.degree() ;
+        let size = (10 * params.degree() - 4) * pk_bounds.len() + 4 * params.degree();
         //let size = (10 * pk_bounds.len() + 4) * params.degree() - 8;
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
