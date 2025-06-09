@@ -56,13 +56,14 @@ impl BfvPkEncryptionCircuit {
         let (inputs, offset) = flatten(inputs, self.r1is, offset);
         let (inputs, offset) = flatten(inputs, self.r2is, offset);
         let (inputs, offset) = flatten(inputs, self.p1is, offset);
-        let (inputs, _offset) = flatten(inputs, self.p2is, offset);
+        let (inputs, _) = flatten(inputs, self.p2is, offset);
 
         inputs
     }
 
     pub fn correct_encryption(self) {
         // Binary check
+
         assert(0 == self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]));
 
         // Bound check
@@ -150,21 +151,32 @@ impl BfvPkEncryptionCircuit {
     }
 }
 
-/// Flattens a 2D array of `Polynomial<N>` into a 1D `inputs` array of `Field` elements.
-/// # Example
-/// ```rust
-/// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
+/// Flattens an array of polynomials into a 1D array of Field elements.
+///
+/// # Generic Parameters
+/// * `A` - The size of each polynomial in the array
+/// * `L` - The number of polynomials in the array
+///
+/// # Arguments
+/// * `inputs` - The target array to store flattened coefficients
+/// * `poly` - Array of polynomials to flatten
+/// * `offset` - Starting position in the inputs array
+///
+/// # Returns
+/// A tuple containing:
+/// * The updated inputs array with flattened coefficients
+/// * The new offset position
 /// ```
-fn flatten<let N: u32, let L: u32>(
+fn flatten<let A: u32, let L: u32>(
     mut inputs: [Field; SIZE],
-    poly: [Polynomial<N>; L],
+    poly: [Polynomial<A>; L],
     mut offset: u32,
 ) -> ([Field; SIZE], u32) {
     for j in 0..L {
-        for i in 0..N {
+        for i in 0..A {
             inputs[i + offset] = poly[j].coefficients[i];
         }
-        offset += N;
+        offset += A;
     }
 
     (inputs, offset)
