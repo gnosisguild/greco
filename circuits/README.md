@@ -8,7 +8,6 @@ A Noir library implementing zero-knowledge circuits for proving correct cipherte
 > If you remove that check (in `circuits/src/crypto/pk_encryption.nr`), the circuit will no longer verify that inputs are strictly `0` or `1`.  
 > _Proceed with caution_: you are responsible for ensuring all inputs are valid and safe for your desired use case.
 
-
 ## Features
 
 - **BFV Encryption Circuit**: Proves correct encryption of ciphertexts under BFV scheme
@@ -57,6 +56,14 @@ let circuit = BfvPkEncryptionCircuit::new(
 // Verify encryption correctness
 circuit.correct_encryption();
 ```
+
+## Constants
+
+The constants are generated with the following parameters:
+
+- Degree: 2048
+- Plaintext modulus: 1032193
+- Ciphertext moduli: [4503599626321921]
 
 ## Mathematical Background
 
