@@ -35,9 +35,9 @@ Generator for cryptographic parameters and constants:
 use e3_greco_generator::{BfvConfig, GeneratorConfig, generate_all_outputs};
 
 let config = BfvConfig {
-    degree: 1024,
-    plaintext_modulus: 2048,
-    moduli: vec![4503599625535489, 4503599626321921],
+    degree: 2048,
+    plaintext_modulus: 1032193,
+    moduli: vec![4503599626321921],
 };
 
 let results = generate_all_outputs(config, GeneratorConfig::default())?;

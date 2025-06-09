@@ -177,9 +177,9 @@ impl InputValidationVectors {
         e1_rns: &Poly,
         ct: &Ciphertext,
         pk: &PublicKey,
+        params: &Arc<BfvParameters>,
     ) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
         // Get context, plaintext modulus, and degree
-        let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
         let t = Modulus::new(params.plaintext())?;
         let n: u64 = ctx.degree as u64;
@@ -542,9 +542,9 @@ mod tests {
 
     fn setup_test_params() -> (Arc<BfvParameters>, SecretKey, PublicKey) {
         let params = BfvParametersBuilder::new()
-            .set_degree(1024)
-            .set_plaintext_modulus(2048)
-            .set_moduli(&[4503599625535489, 4503599626321921])
+            .set_degree(2048)
+            .set_plaintext_modulus(1032193)
+            .set_moduli(&[4503599626321921])
             .build_arc()
             .unwrap();
 
@@ -557,15 +557,15 @@ mod tests {
 
     #[test]
     fn test_vector_lengths() {
-        let vecs = InputValidationVectors::new(2, 1024);
-        assert!(vecs.check_correct_lengths(2, 1024));
-        assert!(!vecs.check_correct_lengths(3, 1024)); // Wrong moduli count
-        assert!(!vecs.check_correct_lengths(2, 512)); // Wrong degree
+        let vecs = InputValidationVectors::new(1, 2048);
+        assert!(vecs.check_correct_lengths(1, 2048));
+        assert!(!vecs.check_correct_lengths(2, 2048)); // Wrong moduli count
+        assert!(!vecs.check_correct_lengths(1, 1024)); // Wrong degree
     }
 
     #[test]
     fn test_standard_form() {
-        let vecs = InputValidationVectors::new(2, 1024);
+        let vecs = InputValidationVectors::new(1, 2048);
         let p = BigInt::from_str(
             "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         )
@@ -581,35 +581,29 @@ mod tests {
 
     #[test]
     fn test_vector_computation() {
-        let (params, _sk, pk) = setup_test_params();
+        let (params, sk, pk) = setup_test_params();
+
+        // Create a sample plaintext
+        let mut message_data = vec![3u64; params.degree()];
+        message_data[0] = 1;
+        let pt = Plaintext::try_encode(&message_data, Encoding::poly(), &params).unwrap();
+
+        // Use extended encryption to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);
-
-        // Create a test plaintext
-        let t = Modulus::new(params.plaintext()).unwrap();
-        let m = t.random_vec(params.degree(), &mut rng);
-        let pt = Plaintext::try_encode(&m, Encoding::poly(), &params).unwrap();
-
-        // Generate encryption data
-        let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
+        let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
         // Compute vectors
         let vecs =
-            InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk).unwrap();
+            InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params)
+                .unwrap();
 
         // Check dimensions
-        assert!(vecs.check_correct_lengths(2, 1024));
-
-        // Check JSON serialization works
-        let json = vecs.to_json();
-        assert!(json.get("u").is_some());
-        assert!(json.get("e0").is_some());
-        assert!(json.get("e1").is_some());
-        assert!(json.get("k1").is_some());
+        assert!(vecs.check_correct_lengths(1, params.degree()));
     }
 
     #[test]
     fn test_vector_json_format() {
-        let vecs = InputValidationVectors::new(2, 4); // Small size for testing
+        let vecs = InputValidationVectors::new(1, 4); // Small size for testing
         let json = vecs.to_json();
 
         // Check all required fields are present

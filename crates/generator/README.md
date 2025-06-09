@@ -30,8 +30,8 @@ cargo run --bin generator
 # Custom parameters
 cargo run --bin generator -- \
   --degree 2048 \
-  --plaintext-modulus 4096 \
-  --moduli "4503599625535489,4503599626321921" \
+  --plaintext-modulus 1032193 \
+  --moduli "4503599626321921" \
   --output-dir my_output
 ```
 
@@ -41,9 +41,9 @@ cargo run --bin generator -- \
 use greco_generator::{BfvConfig, GeneratorConfig, generate_all_outputs};
 
 let bfv_config = BfvConfig {
-    degree: 1024,
-    plaintext_modulus: 2048,
-    moduli: vec![4503599625535489, 4503599626321921],
+    degree: 2048,
+    plaintext_modulus: 1032193,
+    moduli: vec![4503599626321921],
 };
 
 let generator_config = GeneratorConfig {
@@ -56,13 +56,13 @@ let results = generate_all_outputs(bfv_config, generator_config)?;
 
 ## CLI Options
 
-| Option                | Short | Description                               | Default                             |
-| --------------------- | ----- | ----------------------------------------- | ----------------------------------- |
-| `--degree`            | `-d`  | Cyclotomic polynomial degree (power of 2) | `1024`                              |
-| `--plaintext-modulus` | `-t`  | Plaintext modulus                         | `2048`                              |
-| `--moduli`            | `-q`  | Ciphertext moduli (comma-separated)       | `4503599625535489,4503599626321921` |
-| `--output-dir`        | `-o`  | Output directory for generated files      | `output`                            |
-| `--no-toml`           |       | Skip generating Prover.toml file          | `false`                             |
+| Option                | Short | Description                               | Default            |
+| --------------------- | ----- | ----------------------------------------- | ------------------ |
+| `--degree`            | `-d`  | Cyclotomic polynomial degree (power of 2) | `2048`             |
+| `--plaintext-modulus` | `-t`  | Plaintext modulus                         | `1032193`          |
+| `--moduli`            | `-q`  | Ciphertext moduli (comma-separated)       | `4503599626321921` |
+| `--output-dir`        | `-o`  | Output directory for generated files      | `output`           |
+| `--no-toml`           |       | Skip generating Prover.toml file          | `false`            |
 
 ## Generated Files
 

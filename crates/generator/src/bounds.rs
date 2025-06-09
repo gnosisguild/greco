@@ -253,8 +253,8 @@ impl InputValidationBounds {
         // Convert BigInt bounds to u64/i64 for Noir generation
         let u_bound_u64 = u_bound.to_u64().unwrap_or(19);
         let e_bound_u64 = e_bound.to_u64().unwrap_or(19);
-        let k1_low_bound_i64 = k1_low_bound.to_i64().unwrap_or(-1024);
-        let k1_up_bound_u64 = k1_up_bound.to_u64().unwrap_or(1023);
+        let k1_low_bound_i64 = k1_low_bound.to_i64().unwrap_or(-2048);
+        let k1_up_bound_u64 = k1_up_bound.to_u64().unwrap_or(2047);
 
         let pk_bounds_u64: Vec<u64> = pk_bounds.iter().map(|b| b.to_u64().unwrap_or(0)).collect();
         let r1_low_bounds_i64: Vec<i64> = r1_low_bounds
@@ -339,9 +339,9 @@ mod tests {
 
     fn setup_test_params() -> Arc<BfvParameters> {
         BfvParametersBuilder::new()
-            .set_degree(1024)
-            .set_plaintext_modulus(2048)
-            .set_moduli(&[4503599625535489, 4503599626321921])
+            .set_degree(2048)
+            .set_plaintext_modulus(1032193)
+            .set_moduli(&[4503599626321921])
             .build_arc()
             .unwrap()
     }
@@ -352,11 +352,11 @@ mod tests {
 
         // Test at level 0
         let bounds_l0 = InputValidationBounds::compute(&params, 0).unwrap();
-        assert_eq!(bounds_l0.moduli.len(), 2);
+        assert_eq!(bounds_l0.moduli.len(), 1);
 
-        // Test at level 1
-        let bounds_l1 = InputValidationBounds::compute(&params, 1).unwrap();
-        assert_eq!(bounds_l1.moduli.len(), 1);
+        // Test that computing at level 1 returns an error since we only have one modulus
+        let bounds_l1 = InputValidationBounds::compute(&params, 1);
+        assert!(bounds_l1.is_err());
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
         let bounds = InputValidationBounds::compute(&params, 0).unwrap();
 
         // Create test vectors within bounds
-        let mut vecs = InputValidationVectors::new(2, 1024);
+        let mut vecs = InputValidationVectors::new(1, 2048);
 
         // Fill with values within bounds
         vecs.u[0] = bounds.u.clone() - BigInt::from(1);
@@ -401,7 +401,7 @@ mod tests {
         let bounds = InputValidationBounds::compute(&params, 0).unwrap();
 
         // Create test vectors outside bounds
-        let mut vecs = InputValidationVectors::new(2, 1024);
+        let mut vecs = InputValidationVectors::new(1, 2048);
 
         // Fill with values outside bounds
         vecs.u[0] = bounds.u.clone() + BigInt::from(1); // Exceeds bound

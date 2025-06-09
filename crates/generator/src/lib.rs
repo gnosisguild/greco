@@ -67,6 +67,7 @@ pub fn generate_all_outputs(
         &encryption_data.e1_rns,
         &encryption_data.ciphertext,
         &encryption_data.public_key,
+        &helper.params,
     )?;
 
     // Compute bounds
@@ -121,9 +122,9 @@ pub fn generate_all_outputs(
 #[test]
 pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
     let config = BfvConfig {
-        degree: 1024,
-        plaintext_modulus: 2048,
-        moduli: vec![4503599625535489, 4503599626321921],
+        degree: 2048,
+        plaintext_modulus: 1032193,
+        moduli: vec![4503599626321921],
     };
 
     let helper = BfvHelper::new(config)?;
@@ -137,6 +138,7 @@ pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
         &encryption_data.e1_rns,
         &encryption_data.ciphertext,
         &encryption_data.public_key,
+        &helper.params,
     )?;
 
     println!("Vectors computation successful!");
@@ -148,9 +150,9 @@ pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 pub fn test_bounds_computation() -> Result<(), Box<dyn std::error::Error>> {
     let config = BfvConfig {
-        degree: 1024,
-        plaintext_modulus: 2048,
-        moduli: vec![4503599625535489, 4503599626321921],
+        degree: 2048,
+        plaintext_modulus: 1032193,
+        moduli: vec![4503599626321921],
     };
 
     let helper = BfvHelper::new(config)?;
