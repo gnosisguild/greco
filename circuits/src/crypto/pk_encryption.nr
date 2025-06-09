@@ -1,9 +1,9 @@
 use crate::constants::{
     E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, Q_MOD_T, QIS,
-    R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, SIZE, U_BOUND,
+    R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, SIZE, TAG, U_BOUND,
 };
-use crate::crypto::safe::SafeSponge;
 use crate::math::polynomial::Polynomial;
+use safe::safe::SafeSponge;
 
 /// BfvPkEncryption circuit structure
 pub struct BfvPkEncryptionCircuit {
@@ -83,7 +83,7 @@ impl BfvPkEncryptionCircuit {
 
         // We assign all the coefficients to an array to generate challenge values
         let inputs = self.payload();
-        let mut safe = SafeSponge::start([SIZE, 2 * L]);
+        let mut safe = SafeSponge::<_, _, TAG>::start([SIZE, 2 * L]);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
 
