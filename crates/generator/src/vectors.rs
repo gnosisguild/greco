@@ -541,9 +541,9 @@ mod tests {
 
     fn setup_test_params() -> (Arc<BfvParameters>, SecretKey, PublicKey) {
         let params = BfvParametersBuilder::new()
-            .set_degree(1024)
-            .set_plaintext_modulus(2048)
-            .set_moduli(&[4503599625535489, 4503599626321921])
+            .set_degree(2048)
+            .set_plaintext_modulus(1032193)
+            .set_moduli(&[4503599626321921])
             .build_arc()
             .unwrap();
 
@@ -556,15 +556,15 @@ mod tests {
 
     #[test]
     fn test_vector_lengths() {
-        let vecs = InputValidationVectors::new(2, 1024);
-        assert!(vecs.check_correct_lengths(2, 1024));
-        assert!(!vecs.check_correct_lengths(3, 1024)); // Wrong moduli count
-        assert!(!vecs.check_correct_lengths(2, 512)); // Wrong degree
+        let vecs = InputValidationVectors::new(1, 2048);
+        assert!(vecs.check_correct_lengths(1, 2048));
+        assert!(!vecs.check_correct_lengths(2, 2048)); // Wrong moduli count
+        assert!(!vecs.check_correct_lengths(1, 1024)); // Wrong degree
     }
 
     #[test]
     fn test_standard_form() {
-        let vecs = InputValidationVectors::new(2, 1024);
+        let vecs = InputValidationVectors::new(1, 2048);
         let p = BigInt::from_str(
             "21888242871839275222246405745257275088548364400416034343698204186575808495617",
         )
@@ -596,7 +596,7 @@ mod tests {
             InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk).unwrap();
 
         // Check dimensions
-        assert!(vecs.check_correct_lengths(2, 1024));
+        assert!(vecs.check_correct_lengths(1, 2048));
 
         // Check JSON serialization works
         let json = vecs.to_json();
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn test_vector_json_format() {
-        let vecs = InputValidationVectors::new(2, 4); // Small size for testing
+        let vecs = InputValidationVectors::new(1, 4); // Small size for testing
         let json = vecs.to_json();
 
         // Check all required fields are present

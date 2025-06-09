@@ -27,7 +27,7 @@ impl CliConfig {
                     .short('d')
                     .value_name("DEGREE")
                     .help("Cyclotomic polynomial degree (power of 2)")
-                    .default_value("1024"),
+                    .default_value("2048"),
             )
             .arg(
                 Arg::new("plaintext-modulus")
@@ -35,7 +35,7 @@ impl CliConfig {
                     .short('t')
                     .value_name("MODULUS")
                     .help("Plaintext modulus")
-                    .default_value("2048"),
+                    .default_value("1032193"),
             )
             .arg(
                 Arg::new("moduli")
@@ -43,7 +43,7 @@ impl CliConfig {
                     .short('q')
                     .value_name("MODULI")
                     .help("Ciphertext moduli (comma-separated)")
-                    .default_value("4503599625535489,4503599626321921"),
+                    .default_value("4503599626321921"),
             )
             .arg(
                 Arg::new("output-dir")
