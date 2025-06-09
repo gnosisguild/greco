@@ -67,6 +67,7 @@ pub fn generate_all_outputs(
         &encryption_data.e1_rns,
         &encryption_data.ciphertext,
         &encryption_data.public_key,
+        &helper.params,
     )?;
 
     // Compute bounds
@@ -137,6 +138,7 @@ pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
         &encryption_data.e1_rns,
         &encryption_data.ciphertext,
         &encryption_data.public_key,
+        &helper.params,
     )?;
 
     println!("Vectors computation successful!");

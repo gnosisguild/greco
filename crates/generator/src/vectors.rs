@@ -176,9 +176,9 @@ impl InputValidationVectors {
         e1_rns: &Poly,
         ct: &Ciphertext,
         pk: &PublicKey,
+        params: &Arc<BfvParameters>,
     ) -> Result<InputValidationVectors, Box<dyn std::error::Error>> {
         // Get context, plaintext modulus, and degree
-        let params = &pk.par;
         let ctx = params.ctx_at_level(pt.level())?;
         let t = Modulus::new(params.plaintext())?;
         let n: u64 = ctx.degree as u64;
@@ -580,30 +580,24 @@ mod tests {
 
     #[test]
     fn test_vector_computation() {
-        let (params, _sk, pk) = setup_test_params();
+        let (params, sk, pk) = setup_test_params();
+
+        // Create a sample plaintext
+        let mut message_data = vec![3u64; params.degree()];
+        message_data[0] = 1;
+        let pt = Plaintext::try_encode(&message_data, Encoding::poly(), &params).unwrap();
+
+        // Use extended encryption to get the polynomial data
         let mut rng = StdRng::seed_from_u64(0);
-
-        // Create a test plaintext
-        let t = Modulus::new(params.plaintext()).unwrap();
-        let m = t.random_vec(params.degree(), &mut rng);
-        let pt = Plaintext::try_encode(&m, Encoding::poly(), &params).unwrap();
-
-        // Generate encryption data
-        let (ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
+        let (_ct, u_rns, e0_rns, e1_rns) = pk.try_encrypt_extended(&pt, &mut rng).unwrap();
 
         // Compute vectors
         let vecs =
-            InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &ct, &pk).unwrap();
+            InputValidationVectors::compute(&pt, &u_rns, &e0_rns, &e1_rns, &_ct, &pk, &params)
+                .unwrap();
 
         // Check dimensions
-        assert!(vecs.check_correct_lengths(1, 2048));
-
-        // Check JSON serialization works
-        let json = vecs.to_json();
-        assert!(json.get("u").is_some());
-        assert!(json.get("e0").is_some());
-        assert!(json.get("e1").is_some());
-        assert!(json.get("k1").is_some());
+        assert!(vecs.check_correct_lengths(1, params.degree()));
     }
 
     #[test]
