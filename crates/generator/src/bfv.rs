@@ -27,7 +27,7 @@ impl Default for BfvConfig {
         Self {
             degree: 2048,
             plaintext_modulus: 1032193,
-            moduli: vec![4503599626321921],
+            moduli: vec![18014398492704769],
         }
     }
 }
