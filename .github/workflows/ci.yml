@@ -6,7 +6,6 @@ on:
   push:
     branches:
       - main
-      - noir
 
 jobs:
   rust:
@@ -99,10 +98,6 @@ jobs:
           sudo mkswap /swapfile
           sudo swapon /swapfile
           sudo swapon --show
-
-      - name: Generate Prover.toml
-        working-directory: crates
-        run: cargo run --bin generator -- -o ../examples/pk_encryption && rm -rf ../examples/pk_encryption/constants.nr
 
       - name: Compile pk_encryption circuit
         working-directory: examples/pk_encryption
