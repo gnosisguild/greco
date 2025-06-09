@@ -188,7 +188,6 @@ impl InputValidationVectors {
             .to_u64()
             .ok_or_else(|| "Cannot convert BigInt to u64.".to_string())?; // [q]_t
         let mut k1_u64 = pt.value.deref().to_vec(); // m
-
         t.scalar_mul_vec(&mut k1_u64, q_mod_t); // k1 = [q*m]_t
 
         let mut k1: Vec<BigInt> = k1_u64.iter().map(|&x| BigInt::from(x)).rev().collect();
@@ -543,7 +542,7 @@ mod tests {
         let params = BfvParametersBuilder::new()
             .set_degree(2048)
             .set_plaintext_modulus(1032193)
-            .set_moduli(&[4503599626321921])
+            .set_moduli(&[18014398492704769])
             .build_arc()
             .unwrap();
 

@@ -43,7 +43,7 @@ impl CliConfig {
                     .short('q')
                     .value_name("MODULI")
                     .help("Ciphertext moduli (comma-separated)")
-                    .default_value("4503599626321921"),
+                    .default_value("18014398492704769"),
             )
             .arg(
                 Arg::new("output-dir")
