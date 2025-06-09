@@ -45,18 +45,18 @@ impl BfvPkEncryptionCircuit {
         let mut inputs = [0; SIZE];
         let mut offset = 0;
 
-        let (inputs, offset) = flatten1(inputs, self.pk0is, offset);
-        let (inputs, offset) = flatten1(inputs, self.pk1is, offset);
-        let (inputs, offset) = flatten1(inputs, self.ct0is, offset);
-        let (inputs, offset) = flatten1(inputs, self.ct1is, offset);
-        let (inputs, offset) = flatten2(inputs, self.e0, offset);
-        let (inputs, offset) = flatten2(inputs, self.e1, offset);
-        let (inputs, offset) = flatten2(inputs, self.u, offset);
-        let (inputs, offset) = flatten2(inputs, self.k1, offset);
-        let (inputs, offset) = flatten3(inputs, self.r1is, offset);
-        let (inputs, offset) = flatten4(inputs, self.r2is, offset);
-        let (inputs, offset) = flatten3(inputs, self.p1is, offset);
-        let (inputs, _offset) = flatten4(inputs, self.p2is, offset);
+        let (inputs, offset) = flatten(inputs, self.pk0is, offset);
+        let (inputs, offset) = flatten(inputs, self.pk1is, offset);
+        let (inputs, offset) = flatten(inputs, self.ct0is, offset);
+        let (inputs, offset) = flatten(inputs, self.ct1is, offset);
+        let (inputs, offset) = flatten(inputs, [self.e0], offset);
+        let (inputs, offset) = flatten(inputs, [self.e1], offset);
+        let (inputs, offset) = flatten(inputs, [self.u], offset);
+        let (inputs, offset) = flatten(inputs, [self.k1], offset);
+        let (inputs, offset) = flatten(inputs, self.r1is, offset);
+        let (inputs, offset) = flatten(inputs, self.r2is, offset);
+        let (inputs, offset) = flatten(inputs, self.p1is, offset);
+        let (inputs, _) = flatten(inputs, self.p2is, offset);
 
         inputs
     }
@@ -151,66 +151,32 @@ impl BfvPkEncryptionCircuit {
     }
 }
 
-/// Flattens a 2D array of `Polynomial<N>` into a 1D `inputs` array of `Field` elements.
-/// # Example
-/// ```rust
-/// let (flattened, new_offset) = flatten(inputs, polynomials, offset);
+/// Flattens an array of polynomials into a 1D array of Field elements.
+///
+/// # Generic Parameters
+/// * `A` - The size of each polynomial in the array
+/// * `L` - The number of polynomials in the array
+///
+/// # Arguments
+/// * `inputs` - The target array to store flattened coefficients
+/// * `poly` - Array of polynomials to flatten
+/// * `offset` - Starting position in the inputs array
+///
+/// # Returns
+/// A tuple containing:
+/// * The updated inputs array with flattened coefficients
+/// * The new offset position
 /// ```
-fn flatten1<let N: u32, let L: u32>(
+fn flatten<let A: u32, let L: u32>(
     mut inputs: [Field; SIZE],
-    poly: [Polynomial<N>; L],
+    poly: [Polynomial<A>; L],
     mut offset: u32,
 ) -> ([Field; SIZE], u32) {
     for j in 0..L {
-        for i in 0..N {
+        for i in 0..A {
             inputs[i + offset] = poly[j].coefficients[i];
         }
-        offset += N;
-    }
-
-    (inputs, offset)
-}
-
-fn flatten2<let N: u32, let L: u32>(
-    mut inputs: [Field; SIZE],
-    poly: Polynomial<N>,
-    mut offset: u32,
-) -> ([Field; SIZE], u32) {
-    for i in 0..N {
-        inputs[i + offset] = poly.coefficients[i];
-    }
-    offset += N;
-
-    (inputs, offset)
-}
-
-fn flatten3<let N: u32, let L: u32>(
-    mut inputs: [Field; SIZE],
-    poly: [Polynomial<2 * N - 1>; L],
-    mut offset: u32,
-) -> ([Field; SIZE], u32) {
-    let bound_N = 2 * N - 1;
-    for j in 0..L {
-        for i in 0..bound_N {
-            inputs[i + offset] = poly[j].coefficients[i];
-        }
-        offset += bound_N;
-    }
-
-    (inputs, offset)
-}
-
-fn flatten4<let N: u32, let L: u32>(
-    mut inputs: [Field; SIZE],
-    poly: [Polynomial<N - 1>; L],
-    mut offset: u32,
-) -> ([Field; SIZE], u32) {
-    let bound_N = N - 1;
-    for j in 0..L {
-        for i in 0..bound_N {
-            inputs[i + offset] = poly[j].coefficients[i];
-        }
-        offset += bound_N;
+        offset += A;
     }
 
     (inputs, offset)
