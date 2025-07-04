@@ -3,10 +3,10 @@ use circuits::crypto::pk_encryption::BfvPkEncryptionCircuit;
 use circuits::math::polynomial::Polynomial;
 
 fn main(
-    pk0is: [Polynomial<N>; L],
-    pk1is: [Polynomial<N>; L],
-    ct0is: [Polynomial<N>; L],
-    ct1is: [Polynomial<N>; L],
+    pk0is: pub [Polynomial<N>; L],
+    pk1is: pub [Polynomial<N>; L],
+    ct0is: pub [Polynomial<N>; L],
+    ct1is: pub [Polynomial<N>; L],
     u: Polynomial<N>,
     e0: Polynomial<N>,
     e1: Polynomial<N>,
