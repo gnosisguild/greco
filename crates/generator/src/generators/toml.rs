@@ -1,8 +1,9 @@
 //! Prover TOML generator.
 //!
-//! This module generates Prover.toml files containing input validation vectors
-//! for use with Noir provers.
+//! This module generates `Prover.toml` files containing input validation vectors
+//! and BFV parameter bounds for use with Noir provers.
 
+use crate::bounds::InputValidationBounds;
 use crate::utils::to_string_1d_vec;
 use crate::vectors::InputValidationVectors;
 use serde::Serialize;
@@ -13,15 +14,36 @@ use std::path::{Path, PathBuf};
 /// Generator for Prover TOML files
 pub struct TomlGenerator;
 
+/// Parameter bounds to include in the TOML
+#[derive(Serialize)]
+struct ProverParamsTable {
+    e_bound: String,
+    u_bound: String,
+    k0is: Vec<String>,
+    k1_low_bound: String,
+    k1_up_bound: String,
+    p1_bounds: Vec<String>,
+    p2_bounds: Vec<String>,
+    pk_bounds: Vec<String>,
+    q_mod_t: String,
+    qis: Vec<String>,
+    r1_low_bounds: Vec<String>,
+    r1_up_bounds: Vec<String>,
+    r2_bounds: Vec<String>,
+    size: String,
+    tag: String,
+}
+
 /// Structure for individual vector tables in TOML
 #[derive(Serialize)]
 struct ProverVectorsTable {
     coefficients: Vec<String>,
 }
 
-/// Structure for the complete Prover.toml format
+/// Complete `Prover.toml` format including params and vectors
 #[derive(Serialize)]
 struct ProverTomlFormat {
+    params: ProverParamsTable,
     ct0is: Vec<ProverVectorsTable>,
     ct1is: Vec<ProverVectorsTable>,
     pk0is: Vec<ProverVectorsTable>,
@@ -42,17 +64,18 @@ impl TomlGenerator {
         Self
     }
 
-    /// Generate Prover.toml file
+    /// Generate `Prover.toml` file with bounds and vectors
     pub fn generate(
         &self,
+        bounds: &InputValidationBounds,
         vectors: &InputValidationVectors,
         output_dir: &Path,
     ) -> Result<PathBuf, Box<dyn std::error::Error>> {
         let output_path = output_dir.join("Prover.toml");
         let mut file = File::create(&output_path)?;
 
-        // Convert vectors to TOML format
-        let toml_data = self.to_prover_toml_format(vectors);
+        // Aggregate parameters and vectors
+        let toml_data = self.to_prover_toml_format(bounds, vectors);
 
         // Serialize to TOML
         let toml_string = toml::to_string(&toml_data)?;
@@ -63,9 +86,30 @@ impl TomlGenerator {
         Ok(output_path)
     }
 
-    /// Convert InputValidationVectors to ProverTomlFormat
-    fn to_prover_toml_format(&self, vecs: &InputValidationVectors) -> ProverTomlFormat {
+    /// Convert bounds and vectors to `ProverTomlFormat`
+    fn to_prover_toml_format(
+        &self,
+        bounds: &InputValidationBounds,
+        vecs: &InputValidationVectors,
+    ) -> ProverTomlFormat {
         ProverTomlFormat {
+            params: ProverParamsTable {
+                e_bound: bounds.e_bound.to_string(),
+                u_bound: bounds.u_bound.to_string(),
+                k0is: bounds.k0is.iter().map(|b| b.to_string()).collect(),
+                k1_low_bound: bounds.k1_low_bound.to_string(),
+                k1_up_bound: bounds.k1_up_bound.to_string(),
+                p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
+                p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
+                pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
+                q_mod_t: bounds.q_mod_t.to_string(),
+                qis: bounds.moduli.iter().map(|b| b.to_string()).collect(),
+                r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
+                r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
+                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                size: bounds.size.to_string(),
+                tag: bounds.tag.to_string(),
+            },
             ct0is: vecs
                 .ct0is
                 .iter()

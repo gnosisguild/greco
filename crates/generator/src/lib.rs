@@ -108,6 +108,7 @@ pub fn generate_all_outputs(
     if generator_config.generate_toml {
         let toml_generator = TomlGenerator::new();
         let toml_path = toml_generator.generate(
+            &bounds,
             &vectors.standard_form(&zkp_modulus),
             &generator_config.output_dir,
         )?;
