@@ -8,7 +8,6 @@ use fhe_math::{
     rq::{Poly, Representation},
     zq::Modulus,
 };
-use fhe_traits::*;
 use itertools::izip;
 use num_bigint::BigInt;
 use num_traits::{ToPrimitive, Zero};
@@ -535,6 +534,7 @@ impl InputValidationVectors {
 mod tests {
     use super::*;
     use fhe::bfv::{BfvParametersBuilder, Encoding, Plaintext, SecretKey};
+    use fhe_traits::FheEncoder;
     use num_bigint::BigInt;
     use rand::{rngs::StdRng, SeedableRng};
     use std::str::FromStr;
@@ -580,7 +580,7 @@ mod tests {
 
     #[test]
     fn test_vector_computation() {
-        let (params, sk, pk) = setup_test_params();
+        let (params, _sk, pk) = setup_test_params();
 
         // Create a sample plaintext
         let mut message_data = vec![3u64; params.degree()];
