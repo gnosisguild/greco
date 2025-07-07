@@ -1,8 +1,9 @@
 use circuits::constants::{L, N};
-use circuits::crypto::pk_encryption::BfvPkEncryptionCircuit;
+use circuits::crypto::{Params, pk_encryption::BfvPkEncryptionCircuit};
 use circuits::math::polynomial::Polynomial;
 
 fn main(
+    params: pub Params<N, L>,
     pk0is: pub [Polynomial<N>; L],
     pk1is: pub [Polynomial<N>; L],
     ct0is: pub [Polynomial<N>; L],
@@ -17,6 +18,7 @@ fn main(
     p2is: [Polynomial<N - 1>; L],
 ) {
     let circuit = BfvPkEncryptionCircuit::new(
+        params,
         pk0is,
         pk1is,
         ct0is,
