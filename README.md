@@ -28,7 +28,6 @@ Generator for cryptographic parameters and constants:
 
 - BFV parameter generation and validation
 - Input validation vector computation
-- Noir circuit constants generation
 - Prover TOML file generation
 
 ```rust
@@ -59,7 +58,6 @@ cargo run --bin generator
 
 This will create:
 
-- `constants.nr`: Noir circuit parameters and bounds
 - `Prover.toml`: Input validation vectors
 
 ## Mathematical Background
