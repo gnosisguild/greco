@@ -3,7 +3,7 @@ pub mod pk_encryption;
 /// BfvPkEncryption params
 pub struct Params<let N: u32, let L: u32> {
     q_mod_t: Field,
-    pk_bound: [u64; L],
+    pk_bounds: [u64; L],
     e_bound: u64,
     u_bound: u64,
     r1_low_bounds: [i64; L],
@@ -22,7 +22,7 @@ pub struct Params<let N: u32, let L: u32> {
 impl<let N: u32, let L: u32> Params<N, L> {
     pub fn new(
         q_mod_t: Field,
-        pk_bound: [u64; L],
+        pk_bounds: [u64; L],
         e_bound: u64,
         u_bound: u64,
         r1_low_bounds: [i64; L],
@@ -39,7 +39,7 @@ impl<let N: u32, let L: u32> Params<N, L> {
     ) -> Self {
         Params {
             q_mod_t,
-            pk_bound,
+            pk_bounds,
             e_bound,
             u_bound,
             r1_low_bounds,

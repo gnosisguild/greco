@@ -88,8 +88,8 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
         self.k1.range_check_2bounds(self.params.k1_up_bound, self.params.k1_low_bound);
 
         for i in 0..L {
-            self.pk0is[i].range_check_1bound(self.params.pk_bound[i]);
-            self.pk1is[i].range_check_1bound(self.params.pk_bound[i]);
+            self.pk0is[i].range_check_1bound(self.params.pk_bounds[i]);
+            self.pk1is[i].range_check_1bound(self.params.pk_bounds[i]);
             self.r1is[i].range_check_2bounds(
                 self.params.r1_up_bounds[i],
                 self.params.r1_low_bounds[i],
