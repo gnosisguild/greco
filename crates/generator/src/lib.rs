@@ -42,7 +42,6 @@ impl Default for GeneratorConfig {
 pub struct GenerationResults {
     pub vectors: InputValidationVectors,
     pub bounds: InputValidationBounds,
-    pub noir_file: Option<PathBuf>,
     pub toml_file: Option<PathBuf>,
 }
 
@@ -84,7 +83,6 @@ pub fn generate_all_outputs(
     let mut results = GenerationResults {
         vectors: vectors.clone(),
         bounds: bounds.clone(),
-        noir_file: None,
         toml_file: None,
     };
 
