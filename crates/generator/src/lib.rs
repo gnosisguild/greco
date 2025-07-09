@@ -14,7 +14,7 @@ pub mod vectors;
 pub use bfv::{BfvConfig, BfvHelper, EncryptionData};
 pub use bounds::InputValidationBounds;
 pub use cli::CliConfig;
-pub use generators::{noir::NoirGenerator, toml::TomlGenerator};
+pub use generators::toml::TomlGenerator;
 pub use vectors::InputValidationVectors;
 
 use num_traits::Num;
@@ -42,7 +42,6 @@ impl Default for GeneratorConfig {
 pub struct GenerationResults {
     pub vectors: InputValidationVectors,
     pub bounds: InputValidationBounds,
-    pub noir_file: Option<PathBuf>,
     pub toml_file: Option<PathBuf>,
 }
 
@@ -51,10 +50,6 @@ pub fn generate_all_outputs(
     bfv_config: BfvConfig,
     generator_config: GeneratorConfig,
 ) -> Result<GenerationResults, Box<dyn std::error::Error>> {
-    // Store values we'll need later before moving bfv_config
-    let moduli = bfv_config.moduli.clone();
-    let degree = bfv_config.degree;
-
     // Create BFV helper and generate encryption
     let helper = BfvHelper::new(bfv_config)?;
     let encryption_data = helper.generate_sample_encryption()?;
@@ -88,26 +83,14 @@ pub fn generate_all_outputs(
     let mut results = GenerationResults {
         vectors: vectors.clone(),
         bounds: bounds.clone(),
-        noir_file: None,
         toml_file: None,
     };
-
-    // Generate Noir constants if requested
-    let noir_generator = NoirGenerator::new();
-    // We need to create a context for the noir generator
-    let context = fhe_math::rq::Context::new(&moduli, degree)?;
-    let noir_path = noir_generator.generate(
-        &bounds,
-        &helper.params,
-        &context,
-        &generator_config.output_dir,
-    )?;
-    results.noir_file = Some(noir_path);
 
     // Generate Prover TOML if requested
     if generator_config.generate_toml {
         let toml_generator = TomlGenerator::new();
         let toml_path = toml_generator.generate(
+            &bounds,
             &vectors.standard_form(&zkp_modulus),
             &generator_config.output_dir,
         )?;

@@ -10,7 +10,7 @@ use num_traits::{FromPrimitive, Signed, ToPrimitive};
 use polynomial::{
     range_check_centered, range_check_standard, range_check_standard_2bounds, reduce_and_center,
 };
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use crate::vectors::InputValidationVectors;
 
@@ -177,12 +177,15 @@ impl InputValidationBounds {
         let ctx = params.ctx_at_level(level)?;
 
         let half_modulus = params.plaintext() / 2;
-        let q_mod_t = reduce_and_center(
-            &BigInt::from(ctx.modulus().clone()),
-            &BigInt::from(params.plaintext()),
-            &BigInt::from(half_modulus),
-        );
-        //let q_mod_t = BigUint::from(ctx.modulus() % params.plaintext());
+        let q_mod_t = BigInt::from_str(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        )
+        .unwrap()
+            + reduce_and_center(
+                &BigInt::from(ctx.modulus().clone()),
+                &BigInt::from(params.plaintext()),
+                &BigInt::from(half_modulus),
+            );
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.

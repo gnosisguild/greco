@@ -128,10 +128,6 @@ impl CliConfig {
         let results = generate_all_outputs(self.bfv_config.clone(), self.generator_config.clone())?;
 
         println!("\nOutputs:");
-        if let Some(noir_path) = &results.noir_file {
-            println!("- Noir constants: {:?}", noir_path);
-        }
-
         if let Some(toml_path) = &results.toml_file {
             println!("- Prover TOML: {:?}", toml_path);
         }

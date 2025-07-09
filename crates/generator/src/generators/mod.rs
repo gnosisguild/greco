@@ -1,7 +1,6 @@
-//! Output generators for different formats.
+//! Output generator.
 //!
-//! This module contains generators for various output formats including
-//! Noir constants and Prover TOML files.
+//! This module contains generator for
+//! Prover TOML files.
 
-pub mod noir;
 pub mod toml;

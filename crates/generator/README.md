@@ -66,10 +66,6 @@ let results = generate_all_outputs(bfv_config, generator_config)?;
 
 ## Generated Files
 
-### Noir Constants (`constants.nr`)
-
-Contains BFV parameters, input validation bounds, and per-modulus bounds for constraint checking in Noir circuit format.
-
 ### Prover TOML (`Prover.toml`)
 
 Contains input validation vectors (plaintext coefficients, encryption randomness polynomials, ciphertext polynomials) reduced modulo the BN254 scalar field.

@@ -1,12 +1,10 @@
-use crate::constants::{
-    E_BOUND, K0IS, K1_LOW_BOUND, K1_UP_BOUND, L, N, P1_BOUNDS, P2_BOUNDS, PK_BOUND, Q_MOD_T, QIS,
-    R1_LOW_BOUNDS, R1_UP_BOUNDS, R2_BOUNDS, SIZE, TAG, U_BOUND,
-};
 use crate::math::polynomial::Polynomial;
+use super::Params;
 use safe::safe::SafeSponge;
 
 /// BfvPkEncryption circuit structure
-pub struct BfvPkEncryptionCircuit {
+pub struct BfvPkEncryptionCircuit<let N: u32, let L: u32> {
+    params: Params<N, L>,
     pk0is: [Polynomial<N>; L],
     pk1is: [Polynomial<N>; L],
     ct0is: [Polynomial<N>; L],
@@ -21,9 +19,10 @@ pub struct BfvPkEncryptionCircuit {
     p2is: [Polynomial<N - 1>; L],
 }
 
-impl BfvPkEncryptionCircuit {
+impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
     /// Creates a new circuit
     pub fn new(
+        params: Params<N, L>,
         pk0is: [Polynomial<N>; L],
         pk1is: [Polynomial<N>; L],
         ct0is: [Polynomial<N>; L],
@@ -36,12 +35,26 @@ impl BfvPkEncryptionCircuit {
         r2is: [Polynomial<N - 1>; L],
         p1is: [Polynomial<2 * N - 1>; L],
         p2is: [Polynomial<N - 1>; L],
-    ) -> BfvPkEncryptionCircuit {
-        BfvPkEncryptionCircuit { pk0is, pk1is, ct0is, ct1is, u, e0, e1, k1, r1is, r2is, p1is, p2is }
+    ) -> BfvPkEncryptionCircuit<N, L> {
+        BfvPkEncryptionCircuit {
+            params,
+            pk0is,
+            pk1is,
+            ct0is,
+            ct1is,
+            u,
+            e0,
+            e1,
+            k1,
+            r1is,
+            r2is,
+            p1is,
+            p2is,
+        }
     }
 
     /// Assigns all the witness polynomial coefficients to an array
-    fn payload(self) -> [Field; SIZE] {
+    fn payload<let SIZE: u32>(self) -> [Field; SIZE] {
         let mut inputs = [0; SIZE];
         let mut offset = 0;
 
@@ -64,26 +77,32 @@ impl BfvPkEncryptionCircuit {
     pub fn correct_encryption(self) {
         // Binary check
 
-        assert(0 == self.k1.coefficients[N - 1] * (Q_MOD_T - self.k1.coefficients[N - 1]));
+        assert(
+            0 == self.k1.coefficients[N - 1] * (self.params.q_mod_t - self.k1.coefficients[N - 1]),
+        );
 
         // Bound check
-        self.u.range_check_1bound(U_BOUND);
-        self.e0.range_check_1bound(E_BOUND);
-        self.e1.range_check_1bound(E_BOUND);
-        self.k1.range_check_2bounds(K1_UP_BOUND, K1_LOW_BOUND);
+        self.u.range_check_1bound(self.params.u_bound);
+        self.e0.range_check_1bound(self.params.e_bound);
+        self.e1.range_check_1bound(self.params.e_bound);
+        self.k1.range_check_2bounds(self.params.k1_up_bound, self.params.k1_low_bound);
 
         for i in 0..L {
-            self.pk0is[i].range_check_1bound(PK_BOUND[i]);
-            self.pk1is[i].range_check_1bound(PK_BOUND[i]);
-            self.r1is[i].range_check_2bounds(R1_UP_BOUNDS[i], R1_LOW_BOUNDS[i]);
-            self.r2is[i].range_check_1bound(R2_BOUNDS[i]);
-            self.p1is[i].range_check_1bound(P1_BOUNDS[i]);
-            self.p2is[i].range_check_1bound(P2_BOUNDS[i]);
+            self.pk0is[i].range_check_1bound(self.params.pk_bounds[i]);
+            self.pk1is[i].range_check_1bound(self.params.pk_bounds[i]);
+            self.r1is[i].range_check_2bounds(
+                self.params.r1_up_bounds[i],
+                self.params.r1_low_bounds[i],
+            );
+            self.r2is[i].range_check_1bound(self.params.r2_bounds[i]);
+            self.p1is[i].range_check_1bound(self.params.p1_bounds[i]);
+            self.p2is[i].range_check_1bound(self.params.p2_bounds[i]);
         }
 
         // We assign all the coefficients to an array to generate challenge values
-        let inputs = self.payload();
-        let mut safe = SafeSponge::<_, _, TAG>::start([SIZE, 2 * L]);
+        // SIZE formula is (10 * N - 4) * L + 4 * N
+        let inputs = self.payload::<(10 * N - 4) * L + 4 * N>();
+        let mut safe = SafeSponge::start([(10 * N - 4) * L + 4 * N, 2 * L], self.params.tag);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
 
@@ -110,10 +129,10 @@ impl BfvPkEncryptionCircuit {
             let pk0_u = (pk0is_at_gamma[i] * u_at_gamma) + e0_at_gamma;
 
             // rhs = pk0_u + k1(gamma) * k0i
-            let rhs = pk0_u + (k1_at_gamma * K0IS[i]);
+            let rhs = pk0_u + (k1_at_gamma * self.params.k0is[i]);
 
             // rhs = rhs + r1i(gamma) * qi
-            let rhs = rhs + (r1i_at_gamma[i] * QIS[i]);
+            let rhs = rhs + (r1i_at_gamma[i] * self.params.qis[i]);
 
             // rhs = rhs + r2i(gamma) * cyclo(gamma)
             let rhs = rhs + r2i_at_gamma[i] * cyclo_at_gamma;
@@ -141,7 +160,7 @@ impl BfvPkEncryptionCircuit {
             let rhs = pk1_u + p2is_at_gamma[i] * cyclo_at_gamma;
 
             //rhs = rhs + p1s * qi
-            let rhs = rhs + (p1is_at_gamma[i] * QIS[i]);
+            let rhs = rhs + (p1is_at_gamma[i] * self.params.qis[i]);
             let lhs = self.ct1is[i].eval(gamma);
 
             // LHS(gamma) = RHS(gamma)
@@ -167,7 +186,7 @@ impl BfvPkEncryptionCircuit {
 /// * The updated inputs array with flattened coefficients
 /// * The new offset position
 /// ```
-fn flatten<let A: u32, let L: u32>(
+fn flatten<let A: u32, let L: u32, let SIZE: u32>(
     mut inputs: [Field; SIZE],
     poly: [Polynomial<A>; L],
     mut offset: u32,

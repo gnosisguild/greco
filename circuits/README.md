@@ -26,7 +26,6 @@ circuits/
 │   │   └── safe.nr            # SAFE sponge implementation
 │   ├── math/
 │   │   └── polynomial.nr      # Polynomial arithmetic
-│   ├── constants.nr           # BFV parameters and bounds
 │   └── lib.nr                 # Library entry point
 ```
 
@@ -42,12 +41,11 @@ circuits = { tag = "v0.1.0", git = "https://github.com/gnosisguild/greco" }
 Basic usage:
 
 ```rust
-use circuits::constants::{L, N};
 use circuits::crypto::pk_encryption::BfvPkEncryptionCircuit;
 use circuits::math::polynomial::Polynomial;
 
 // Create polynomials for public keys, ciphertexts, etc.
-let circuit = BfvPkEncryptionCircuit::new(
+let circuit = BfvPkEncryptionCircuit::<let N: u32, let L: u32>::new(
     pk0is, pk1is, ct0is, ct1is,
     u, e0, e1, k1,
     r1is, r2is, p1is, p2is
