@@ -25,9 +25,9 @@ pub struct BfvConfig {
 impl Default for BfvConfig {
     fn default() -> Self {
         Self {
-            degree: 2048,
-            plaintext_modulus: 1032193,
-            moduli: vec![18014398492704769],
+            degree: 8192,
+            plaintext_modulus: 16384,
+            moduli: vec![562949951979521, 562949951881217, 562949951619073],
         }
     }
 }
