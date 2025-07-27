@@ -6,7 +6,7 @@
 use blake3::Hasher;
 use fhe::bfv::BfvParameters;
 use num_bigint::{BigInt, BigUint};
-use num_traits::{FromPrimitive, Signed, ToPrimitive};
+use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use polynomial::{
     range_check_centered, range_check_standard, range_check_standard_2bounds, reduce_and_center,
 };
@@ -177,15 +177,16 @@ impl InputValidationBounds {
         let ctx = params.ctx_at_level(level)?;
 
         let half_modulus = params.plaintext() / 2;
-        let q_mod_t = BigInt::from_str(
+        let bn254_mod = BigInt::from_str(
             "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        )
-        .unwrap()
+        )?;
+        let q_mod_t = (bn254_mod.clone()
             + reduce_and_center(
                 &BigInt::from(ctx.modulus().clone()),
                 &BigInt::from(params.plaintext()),
                 &BigInt::from(half_modulus),
-            );
+            ))
+        .modpow(&BigInt::one(), &bn254_mod);
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.
@@ -299,7 +300,8 @@ impl InputValidationBounds {
         hasher.update(io_pattern[0].as_slice());
         hasher.update(io_pattern[1].as_slice());
 
-        let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes()) % ctx.modulus().clone();
+        let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes())
+            .modpow(&BigUint::one(), &bn254_mod.to_biguint().unwrap());
 
         Ok(InputValidationBounds {
             u: u_bound.clone(),
