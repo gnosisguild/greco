@@ -2,7 +2,9 @@ use crate::math::polynomial::Polynomial;
 use super::Params;
 use safe::safe::SafeSponge;
 
+
 use std::hash::pedersen_commitment;
+use std::hash::pedersen_hash;
 use std::embedded_curve_ops::EmbeddedCurvePoint;
 
 /// BfvPkEncryption circuit structure
@@ -62,81 +64,29 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
 	    let mut offset = 0;
 
 	    // pk0is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.pk0is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
-
-	    println("inputs");
-	    println(inputs);
-
+	    let (inputs, offset) = flatten_commitment(inputs, self.pk0is , offset);
 	    // pk1is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.pk1is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
-
+	    let (inputs, offset) = flatten_commitment(inputs, self.pk1is , offset);
 	    // ct0is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.ct0is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
-
+	    let (inputs, offset) = flatten_commitment(inputs, self.ct0is , offset);
 	    // ct1is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.ct1is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
+	    let (inputs, offset) = flatten_commitment(inputs, self.ct1is , offset);
 
 	    // e0, e1, u, k1
-	    for poly in [self.e0, self.e1, self.u, self.k1] {
-		let c = pedersen_commitment(poly.coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
+	    let (inputs, offset) = flatten_commitment(inputs, [self.e0] , offset);
+	    let (inputs, offset) = flatten_commitment(inputs, [self.e1] , offset);
+	    let (inputs, offset) = flatten_commitment(inputs, [self.u] , offset);
+	    let (inputs, offset) = flatten_commitment(inputs, [self.k1] , offset);
 
 	    // r1is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.r1is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
-
+	    let (inputs, offset) = flatten_commitment(inputs, self.r1is , offset);
 	    // r2is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.r2is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
+	    let (inputs, offset) = flatten_commitment(inputs, self.r2is , offset);
 
 	    // p1is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.p1is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
-
+	    let (inputs, offset) = flatten_commitment(inputs, self.p1is , offset);
 	    // p2is
-	    for i in 0..L {
-		let c = pedersen_commitment(self.p2is[i].coefficients);
-		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
-		inputs = new_inputs;
-		offset = new_offset;
-	    }
- 	println("inputs");
-	    println(inputs);
+	    let (inputs, offset) = flatten_commitment(inputs, self.p2is , offset);
 
 
 	    inputs
@@ -169,7 +119,9 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
 
         // We assign all the coefficients to an array to generate challenge values
         // SIZE formula is 2 * (8 * L + 4)
+
         let inputs = self.payload::< 16 * L + 8 >();
+
         let mut safe = SafeSponge::start([ 16 * L + 8, 2 * L], self.params.tag);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
@@ -250,12 +202,17 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
 /// * The updated inputs array with flattened values 
 /// * The new offset position
 /// ```
-fn flatten_commitment<let SIZE: u32>(
+fn flatten_commitment<let A: u32, let L: u32, let SIZE: u32>(
     mut inputs: [Field; SIZE],
-    commitment: EmbeddedCurvePoint,
+    poly: [Polynomial<A>; L],
     offset: u32,
 ) -> ([Field; SIZE], u32) {
-    inputs[offset] = commitment.x;
-    inputs[offset + 1] = commitment.y;
+    for j in 0..L {
+
+    	let c = pedersen_commitment(poly[j].coefficients);
+        inputs[offset] = c.x ;
+        inputs[offset + 1] = c.y ;
+    }
+
     (inputs, offset + 2)
 }
