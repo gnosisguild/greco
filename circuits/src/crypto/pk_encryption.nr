@@ -207,38 +207,18 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
     }
 }
 
-/// Flattens an array of polynomials into a 1D array of Field elements.
-///
-/// # Generic Parameters
-/// * `A` - The size of each polynomial in the array
-/// * `L` - The number of polynomials in the array
+/// Flattens Pedersen committment (which is an elliptic curve point [x,y]) into a 1D array of Field elements.
 ///
 /// # Arguments
 /// * `inputs` - The target array to store flattened coefficients
-/// * `poly` - Array of polynomials to flatten
+/// * `commitment` - An ellitpic curve point
 /// * `offset` - Starting position in the inputs array
 ///
 /// # Returns
 /// A tuple containing:
-/// * The updated inputs array with flattened coefficients
+/// * The updated inputs array with flattened values 
 /// * The new offset position
 /// ```
-fn flatten<let A: u32, let L: u32, let SIZE: u32>(
-    mut inputs: [Field; SIZE],
-    poly: [Polynomial<A>; L],
-    mut offset: u32,
-) -> ([Field; SIZE], u32) {
-    for j in 0..L {
-        for i in 0..A {
-            inputs[i + offset] = poly[j].coefficients[i];
-        }
-        offset += A;
-    }
-
-    (inputs, offset)
-}
-
-
 fn flatten_commitment<let SIZE: u32>(
     mut inputs: [Field; SIZE],
     commitment: EmbeddedCurvePoint,
