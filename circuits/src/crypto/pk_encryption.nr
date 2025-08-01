@@ -2,6 +2,9 @@ use crate::math::polynomial::Polynomial;
 use super::Params;
 use safe::safe::SafeSponge;
 
+use std::hash::pedersen_commitment;
+use std::embedded_curve_ops::EmbeddedCurvePoint;
+
 /// BfvPkEncryption circuit structure
 pub struct BfvPkEncryptionCircuit<let N: u32, let L: u32> {
     params: Params<N, L>,
@@ -55,23 +58,57 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
 
     /// Assigns all the witness polynomial coefficients to an array
     fn payload<let SIZE: u32>(self) -> [Field; SIZE] {
-        let mut inputs = [0; SIZE];
-        let mut offset = 0;
+            let mut inputs = [0; SIZE];
+            let mut offset = 0;
 
-        let (inputs, offset) = flatten(inputs, self.pk0is, offset);
-        let (inputs, offset) = flatten(inputs, self.pk1is, offset);
-        let (inputs, offset) = flatten(inputs, self.ct0is, offset);
-        let (inputs, offset) = flatten(inputs, self.ct1is, offset);
-        let (inputs, offset) = flatten(inputs, [self.e0], offset);
-        let (inputs, offset) = flatten(inputs, [self.e1], offset);
-        let (inputs, offset) = flatten(inputs, [self.u], offset);
-        let (inputs, offset) = flatten(inputs, [self.k1], offset);
-        let (inputs, offset) = flatten(inputs, self.r1is, offset);
-        let (inputs, offset) = flatten(inputs, self.r2is, offset);
-        let (inputs, offset) = flatten(inputs, self.p1is, offset);
-        let (inputs, _) = flatten(inputs, self.p2is, offset);
+	    for i in 0..L {
+            	let c = pedersen_commitment(self.pk0is[i].coefficients);
+            	let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
 
-        inputs
+	    for i in 0..L {
+		let c = pedersen_commitment(self.pk1is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.ct0is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.ct1is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    // For single polynomials
+	    for p in [self.e0, self.e1, self.u, self.k1] {
+		let c = pedersen_commitment(p.coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.r1is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.r2is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.p1is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+
+	    for i in 0..L {
+		let c = pedersen_commitment(self.p2is[i].coefficients);
+		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    }
+	inputs
+	
+
     }
 
     pub fn correct_encryption(self) {
@@ -100,9 +137,9 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
         }
 
         // We assign all the coefficients to an array to generate challenge values
-        // SIZE formula is (10 * N - 4) * L + 4 * N
-        let inputs = self.payload::<(10 * N - 4) * L + 4 * N>();
-        let mut safe = SafeSponge::start([(10 * N - 4) * L + 4 * N, 2 * L], self.params.tag);
+        // SIZE formula is 8 * L + 4 
+        let inputs = self.payload::< 8 * L + 4 >();
+        let mut safe = SafeSponge::start([ 8 * L + 4, 2 * L], self.params.tag);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
 
@@ -199,4 +236,15 @@ fn flatten<let A: u32, let L: u32, let SIZE: u32>(
     }
 
     (inputs, offset)
+}
+
+
+fn flatten_commitment<let SIZE: u32>(
+    mut inputs: [Field; SIZE],
+    commitment: EmbeddedCurvePoint,
+    offset: u32,
+) -> ([Field; SIZE], u32) {
+    inputs[offset] = commitment.x;
+    inputs[offset + 1] = commitment.y;
+    (inputs, offset + 2)
 }

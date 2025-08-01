@@ -177,15 +177,19 @@ impl InputValidationBounds {
         let ctx = params.ctx_at_level(level)?;
 
         let half_modulus = params.plaintext() / 2;
-        let q_mod_t = BigInt::from_str(
-            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
-        )
-        .unwrap()
-            + reduce_and_center(
-                &BigInt::from(ctx.modulus().clone()),
-                &BigInt::from(params.plaintext()),
-                &BigInt::from(half_modulus),
-            );
+        let q_mod_t = ctx.modulus() % t.to_u64().unwrap();
+            //.to_u64()  
+            //.ok_or_else(|| "Cannot convert BigInt to u64.".to_string())?; // [q]_t
+
+       // let q_mod_t = BigInt::from_str(
+       //     "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+       // )
+       // .unwrap()
+       //     + reduce_and_center(
+       //         &BigInt::from(ctx.modulus().clone()),
+       //         &BigInt::from(params.plaintext()),
+       //         &BigInt::from(half_modulus),
+       //     );
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.
@@ -290,7 +294,7 @@ impl InputValidationBounds {
         );
         let _domain_separator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
 
-        let size = (10 * params.degree() - 4) * pk_bounds.len() + 4 * params.degree();
+        let size = 8 * pk_bounds.len() + 4;
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
             BigUint::from_usize(2 * pk_bounds.len()).unwrap(),
@@ -325,7 +329,7 @@ impl InputValidationBounds {
             r2_bounds: r2_bounds_u64,
             p1_bounds: p1_bounds_u64,
             p2_bounds: p2_bounds_u64,
-            q_mod_t,
+            q_mod_t: q_mod_t.into(),
             size,
             k0is,
             tag,
