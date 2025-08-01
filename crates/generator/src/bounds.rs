@@ -293,7 +293,7 @@ impl InputValidationBounds {
         );
         let _domain_separator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
 
-        let size = 8 * pk_bounds.len() + 4;
+        let size = 16 * pk_bounds.len() + 8;
         let io_pattern = [
             BigUint::from_usize(size).unwrap(),
             BigUint::from_usize(2 * pk_bounds.len()).unwrap(),

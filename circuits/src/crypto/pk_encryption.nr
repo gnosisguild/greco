@@ -57,59 +57,90 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
     }
 
     /// Assigns all the witness polynomial coefficients to an array
-    fn payload<let SIZE: u32>(self) -> [Field; SIZE] {
-            let mut inputs = [0; SIZE];
-            let mut offset = 0;
+	fn payload<let SIZE: u32>(self) -> [Field; SIZE] {
+	    let mut inputs = [0; SIZE];
+	    let mut offset = 0;
 
+	    // pk0is
 	    for i in 0..L {
-            	let c = pedersen_commitment(self.pk0is[i].coefficients);
-            	let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let c = pedersen_commitment(self.pk0is[i].coefficients);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    println("inputs");
+	    println(inputs);
+
+	    // pk1is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.pk1is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // ct0is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.ct0is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // ct1is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.ct1is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
-	    // For single polynomials
-	    for p in [self.e0, self.e1, self.u, self.k1] {
-		let c = pedersen_commitment(p.coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+	    // e0, e1, u, k1
+	    for poly in [self.e0, self.e1, self.u, self.k1] {
+		let c = pedersen_commitment(poly.coefficients);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // r1is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.r1is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // r2is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.r2is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // p1is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.p1is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
 
+	    // p2is
 	    for i in 0..L {
 		let c = pedersen_commitment(self.p2is[i].coefficients);
-		let (inputs, offset) = flatten_commitment(inputs, c, offset);
+		let (new_inputs, new_offset) = flatten_commitment(inputs, c, offset);
+		inputs = new_inputs;
+		offset = new_offset;
 	    }
-	inputs
-	
+ 	println("inputs");
+	    println(inputs);
 
-    }
+
+	    inputs
+	}
 
     pub fn correct_encryption(self) {
         // Binary check
@@ -137,9 +168,9 @@ impl<let N: u32, let L: u32> BfvPkEncryptionCircuit<N, L> {
         }
 
         // We assign all the coefficients to an array to generate challenge values
-        // SIZE formula is 8 * L + 4 
-        let inputs = self.payload::< 8 * L + 4 >();
-        let mut safe = SafeSponge::start([ 8 * L + 4, 2 * L], self.params.tag);
+        // SIZE formula is 2 * (8 * L + 4)
+        let inputs = self.payload::< 16 * L + 8 >();
+        let mut safe = SafeSponge::start([ 16 * L + 8, 2 * L], self.params.tag);
         safe = safe.absorb(inputs);
         let gammas = safe.squeeze();
 
