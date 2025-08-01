@@ -44,7 +44,6 @@ pub struct InputValidationBounds {
     pub p1_bounds: Vec<u64>,
     pub p2_bounds: Vec<u64>,
     pub q_mod_t: BigInt,
-    pub size: usize,
     pub k0is: Vec<u64>,
     pub tag: BigUint,
 }
@@ -330,7 +329,6 @@ impl InputValidationBounds {
             p1_bounds: p1_bounds_u64,
             p2_bounds: p2_bounds_u64,
             q_mod_t: q_mod_t.into(),
-            size,
             k0is,
             tag,
         })
