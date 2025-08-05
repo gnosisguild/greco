@@ -1,7 +1,7 @@
 # Public Key Encryption Example
 
 This example demonstrates a zero-knowledge proof for BFV public key encryption operations using Noir. The circuit proves the correctness of ciphertext g
-eneration using a public key while keeping the plaintext and encryption randomness private. The proof also includes a check that the first coeffcient of 
+eneration using a public key while keeping the plaintext and encryption randomness private. The proof also includes a check that the first coefficient of 
 the plaintext is in {0,1}.
 
 ## Dependencies
