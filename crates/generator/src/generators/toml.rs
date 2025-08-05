@@ -30,7 +30,6 @@ struct ProverParamsTable {
     r1_low_bounds: Vec<String>,
     r1_up_bounds: Vec<String>,
     r2_bounds: Vec<String>,
-    size: String,
     tag: String,
 }
 
@@ -107,7 +106,6 @@ impl TomlGenerator {
                 r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
                 r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
                 r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                size: bounds.size.to_string(),
                 tag: bounds.tag.to_string(),
             },
             ct0is: vecs
