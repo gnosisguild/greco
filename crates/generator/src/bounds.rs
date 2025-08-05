@@ -177,7 +177,7 @@ impl InputValidationBounds {
 
         let half_modulus = params.plaintext() / 2;
         let q_mod_t = ctx.modulus() % t.to_u64().unwrap();
-        
+
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.
         let gauss_bound = BigInt::from(
