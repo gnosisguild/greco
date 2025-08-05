@@ -15,7 +15,6 @@ pub struct Params<let N: u32, let L: u32> {
     k1_up_bound: u64,
     qis: [Field; L],
     k0is: [Field; L],
-    size: u32,
     tag: Field,
 }
 
@@ -34,7 +33,6 @@ impl<let N: u32, let L: u32> Params<N, L> {
         k1_up_bound: u64,
         qis: [Field; L],
         k0is: [Field; L],
-        size: u32,
         tag: Field,
     ) -> Self {
         Params {
@@ -51,7 +49,6 @@ impl<let N: u32, let L: u32> Params<N, L> {
             k1_up_bound,
             qis,
             k0is,
-            size,
             tag,
         }
     }

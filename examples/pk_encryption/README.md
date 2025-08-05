@@ -1,6 +1,8 @@
 # Public Key Encryption Example
 
-This example demonstrates a zero-knowledge proof for BFV public key encryption operations using Noir. The circuit proves the correctness of ciphertext generation using a public key while keeping the plaintext and encryption randomness private.
+This example demonstrates a zero-knowledge proof for BFV public key encryption operations using Noir. The circuit proves the correctness of ciphertext g
+eneration using a public key while keeping the plaintext and encryption randomness private. The proof also includes a check that the first coeffcient of 
+the plaintext is in {0,1}.
 
 ## Dependencies
 
@@ -42,7 +44,7 @@ This will create a `Prover.toml` file with the necessary polynomial inputs forma
 nargo execute
 ```
 
-4. Generate the proof:
+4. Generate the proof (this is assuming the verification key was already generated):
 
 ```bash
 bb prove -b ./target/pk_encryption.json -w ./target/pk_encryption.gz -o ./target
