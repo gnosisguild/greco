@@ -61,7 +61,7 @@ The constants are generated with the following parameters:
 
 - Degree: 2048
 - Plaintext modulus: 1032193
-- Ciphertext moduli: [4503599626321921]
+- Ciphertext moduli: [18014398492704769]
 
 ## Mathematical Background
 

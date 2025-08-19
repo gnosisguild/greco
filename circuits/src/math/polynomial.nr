@@ -31,7 +31,7 @@ impl<let N: u32> Polynomial<N> {
 
     /// Adds `-lower_bound` to the coefficients of the polynomial and constrains them to be in the range `[0, upper_bound - lower_bound]`.
     pub fn range_check_2bounds(self, upper_bound: u64, lower_bound: i64) {
-        let mut value_shift = ((lower_bound * -1) as u64) as Field;
+        let mut value_shift = (lower_bound * -1) as u64 as Field;
         let comp_value = value_shift + upper_bound as Field;
         for i in 0..self.coefficients.len() {
             let shifted_coeff = self.coefficients[i] + value_shift;
