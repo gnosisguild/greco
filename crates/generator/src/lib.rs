@@ -106,7 +106,7 @@ pub fn generate_all_outputs(
 pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
     let config = BfvConfig {
         degree: 2048,
-        plaintext_modulus: 1032193,
+        plaintext_modulus: 1032192,
         moduli: vec![18014398492704769],
     };
 
@@ -134,7 +134,7 @@ pub fn test_vectors_computation() -> Result<(), Box<dyn std::error::Error>> {
 pub fn test_bounds_computation() -> Result<(), Box<dyn std::error::Error>> {
     let config = BfvConfig {
         degree: 2048,
-        plaintext_modulus: 1032193,
+        plaintext_modulus: 1032192,
         moduli: vec![18014398492704769],
     };
 

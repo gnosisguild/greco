@@ -60,7 +60,7 @@ circuit.correct_encryption();
 The constants are generated with the following parameters:
 
 - Degree: 2048
-- Plaintext modulus: 1032193
+- Plaintext modulus: 
 - Ciphertext moduli: [18014398492704769]
 
 ## Mathematical Background

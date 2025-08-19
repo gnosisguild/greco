@@ -30,7 +30,7 @@ cargo run --bin generator
 # Custom parameters
 cargo run --bin generator -- \
   --degree 2048 \
-  --plaintext-modulus 1032193 \
+  --plaintext-modulus 1032192 \
   --moduli "18014398492704769" \
   --output-dir my_output
 ```
@@ -42,7 +42,7 @@ use greco_generator::{BfvConfig, GeneratorConfig, generate_all_outputs};
 
 let bfv_config = BfvConfig {
     degree: 2048,
-    plaintext_modulus: 1032193,
+    plaintext_modulus: 1032192,
     moduli: vec![18014398492704769],
 };
 
@@ -59,7 +59,7 @@ let results = generate_all_outputs(bfv_config, generator_config)?;
 | Option                | Short | Description                               | Default             |
 | --------------------- | ----- | ----------------------------------------- | ------------------- |
 | `--degree`            | `-d`  | Cyclotomic polynomial degree (power of 2) | `2048`              |
-| `--plaintext-modulus` | `-t`  | Plaintext modulus                         | `1032193`           |
+| `--plaintext-modulus` | `-t`  | Plaintext modulus                         | `1032192`           |
 | `--moduli`            | `-q`  | Ciphertext moduli (comma-separated)       | `18014398492704769` |
 | `--output-dir`        | `-o`  | Output directory for generated files      | `output`            |
 | `--no-toml`           |       | Skip generating Prover.toml file          | `false`             |

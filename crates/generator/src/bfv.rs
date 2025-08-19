@@ -26,7 +26,7 @@ impl Default for BfvConfig {
     fn default() -> Self {
         Self {
             degree: 2048,
-            plaintext_modulus: 1032193,
+            plaintext_modulus: 1032192,
             moduli: vec![18014398492704769],
         }
     }

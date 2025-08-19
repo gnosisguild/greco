@@ -35,7 +35,7 @@ use e3_greco_generator::{BfvConfig, GeneratorConfig, generate_all_outputs};
 
 let config = BfvConfig {
     degree: 2048,
-    plaintext_modulus: 1032193,
+    plaintext_modulus: 1032192,
     moduli: vec![18014398492704769],
 };
 

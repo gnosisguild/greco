@@ -7,10 +7,8 @@ use blake3::Hasher;
 use fhe::bfv::BfvParameters;
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, Signed, ToPrimitive};
-use polynomial::{
-    range_check_centered, range_check_standard, range_check_standard_2bounds, reduce_and_center,
-};
-use std::{str::FromStr, sync::Arc};
+use polynomial::{range_check_centered, range_check_standard, range_check_standard_2bounds};
+use std::sync::Arc;
 
 use crate::vectors::InputValidationVectors;
 
@@ -174,8 +172,6 @@ impl InputValidationBounds {
         let n = BigInt::from(params.degree());
         let t = BigInt::from(params.plaintext());
         let ctx = params.ctx_at_level(level)?;
-
-        let half_modulus = params.plaintext() / 2;
         let q_mod_t = ctx.modulus() % t.to_u64().unwrap();
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
@@ -333,7 +329,7 @@ mod tests {
     fn setup_test_params() -> Arc<BfvParameters> {
         BfvParametersBuilder::new()
             .set_degree(2048)
-            .set_plaintext_modulus(1032193)
+            .set_plaintext_modulus(1032192)
             .set_moduli(&[18014398492704769])
             .build_arc()
             .unwrap()
