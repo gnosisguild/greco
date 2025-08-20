@@ -7,8 +7,10 @@ use blake3::Hasher;
 use fhe::bfv::BfvParameters;
 use num_bigint::{BigInt, BigUint};
 use num_traits::{FromPrimitive, Signed, ToPrimitive};
-use polynomial::{range_check_centered, range_check_standard, range_check_standard_2bounds};
-use std::sync::Arc;
+use polynomial::{
+    range_check_centered, range_check_standard, range_check_standard_2bounds, reduce_and_center_scalar, reduce_scalar
+};
+use std::{str::FromStr, sync::Arc};
 
 use crate::vectors::InputValidationVectors;
 
@@ -172,7 +174,16 @@ impl InputValidationBounds {
         let n = BigInt::from(params.degree());
         let t = BigInt::from(params.plaintext());
         let ctx = params.ctx_at_level(level)?;
-        let q_mod_t = ctx.modulus() % t.to_u64().unwrap();
+        let half_modulus = params.plaintext() / 2;
+        let q_mod_t = reduce_and_center_scalar(&BigInt::from(ctx.modulus().clone()), &BigInt::from(t.to_u64().unwrap())); 
+        let p = BigInt::from_str(
+            "21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        )
+        .unwrap();
+
+        ///Setting q_mod_t in standard from so as to be consistent with other inputs to Noir which
+        ///are declared as Field
+        let q_mod_t_mod_p = reduce_scalar(&q_mod_t, &p); 
 
         // Note: the secret key in fhe.rs is sampled from a discrete gaussian distribution
         // rather than a ternary distribution as in bfv.py.
@@ -312,7 +323,7 @@ impl InputValidationBounds {
             r2_bounds: r2_bounds_u64,
             p1_bounds: p1_bounds_u64,
             p2_bounds: p2_bounds_u64,
-            q_mod_t: q_mod_t.into(),
+            q_mod_t: q_mod_t_mod_p,
             k0is,
             tag,
         })
