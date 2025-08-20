@@ -344,7 +344,7 @@ mod tests {
     fn setup_test_params() -> Arc<BfvParameters> {
         BfvParametersBuilder::new()
             .set_degree(2048)
-            .set_plaintext_modulus(1032192)
+            .set_plaintext_modulus(1032193)
             .set_moduli(&[18014398492704769])
             .build_arc()
             .unwrap()

@@ -35,7 +35,7 @@ impl CliConfig {
                     .short('t')
                     .value_name("MODULUS")
                     .help("Plaintext modulus")
-                    .default_value("1032192"),
+                    .default_value("1032193"),
             )
             .arg(
                 Arg::new("moduli")
