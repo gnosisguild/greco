@@ -43,6 +43,7 @@ struct ProverVectorsTable {
 #[derive(Serialize)]
 struct ProverTomlFormat {
     params: ProverParamsTable,
+    // Original structured arrays (for backward compatibility)
     ct0is: Vec<ProverVectorsTable>,
     ct1is: Vec<ProverVectorsTable>,
     pk0is: Vec<ProverVectorsTable>,
@@ -55,6 +56,15 @@ struct ProverTomlFormat {
     e0: ProverVectorsTable,
     e1: ProverVectorsTable,
     k1: ProverVectorsTable,
+    // Flattened arrays for optimized circuit
+    flattened_pk0is: ProverVectorsTable,
+    flattened_pk1is: ProverVectorsTable,
+    flattened_ct0is: ProverVectorsTable,
+    flattened_ct1is: ProverVectorsTable,
+    flattened_r1is: ProverVectorsTable,
+    flattened_r2is: ProverVectorsTable,
+    flattened_p1is: ProverVectorsTable,
+    flattened_p2is: ProverVectorsTable,
 }
 
 impl TomlGenerator {
@@ -175,6 +185,30 @@ impl TomlGenerator {
             },
             k1: ProverVectorsTable {
                 coefficients: to_string_1d_vec(&vecs.k1),
+            },
+            flattened_pk0is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_pk0is()),
+            },
+            flattened_pk1is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_pk1is()),
+            },
+            flattened_ct0is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_ct0is()),
+            },
+            flattened_ct1is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_ct1is()),
+            },
+            flattened_r1is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_r1is()),
+            },
+            flattened_r2is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_r2is()),
+            },
+            flattened_p1is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_p1is()),
+            },
+            flattened_p2is: ProverVectorsTable {
+                coefficients: to_string_1d_vec(&vecs.flattened_p2is()),
             },
         }
     }

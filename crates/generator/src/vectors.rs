@@ -66,6 +66,55 @@ impl InputValidationVectors {
         }
     }
 
+    /// Flatten 2D vectors into 1D arrays for the circuit
+    pub fn flatten_2d_vector(&self, vectors: &[Vec<BigInt>]) -> Vec<BigInt> {
+        let mut flattened = Vec::new();
+        for vector in vectors {
+            flattened.extend_from_slice(vector);
+        }
+        flattened
+    }
+
+    /// Get flattened pk0is array
+    pub fn flattened_pk0is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.pk0is)
+    }
+
+    /// Get flattened pk1is array
+    pub fn flattened_pk1is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.pk1is)
+    }
+
+    /// Get flattened ct0is array
+    pub fn flattened_ct0is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.ct0is)
+    }
+
+    /// Get flattened ct1is array
+    pub fn flattened_ct1is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.ct1is)
+    }
+
+    /// Get flattened r1is array
+    pub fn flattened_r1is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.r1is)
+    }
+
+    /// Get flattened r2is array
+    pub fn flattened_r2is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.r2is)
+    }
+
+    /// Get flattened p1is array
+    pub fn flattened_p1is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.p1is)
+    }
+
+    /// Get flattened p2is array
+    pub fn flattened_p2is(&self) -> Vec<BigInt> {
+        self.flatten_2d_vector(&self.p2is)
+    }
+
     /// Assign and return all of the centered input validation vectors to the ZKP modulus `p`.
     ///
     /// # Arguments
