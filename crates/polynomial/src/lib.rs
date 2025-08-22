@@ -462,6 +462,18 @@ pub fn reduce_and_center_coefficients(
         .collect()
 }
 
+/// Reduces and centers a scalar
+pub fn reduce_and_center_scalar(x: &BigInt, modulus: &BigInt) -> BigInt {
+    let half_modulus = modulus / 2;
+    reduce_and_center(x, modulus, &half_modulus)
+}
+///
+/// Reduces a scalar
+pub fn reduce_scalar(x: &BigInt, modulus: &BigInt) -> BigInt {
+    let r = (x + modulus) % modulus;
+    r
+}
+
 /// Reduces a polynomial's coefficients within a polynomial ring defined by a cyclotomic polynomial and a modulus.
 ///
 /// This function performs two reductions on the polynomial represented by `coefficients`:
