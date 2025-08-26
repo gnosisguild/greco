@@ -71,12 +71,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust 1.85.0
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.85.0
-          override: true
-
       - name: Install Nargo
         uses: noir-lang/noirup@v0.1.4
         with:
@@ -84,7 +78,7 @@ jobs:
 
       - name: Install bbup (Barretenberg)
         run: |
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/master/barretenberg/bbup/install | bash
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
           echo "$HOME/.bb" >> $GITHUB_PATH
           export PATH="$HOME/.bb:$PATH"
           bbup
