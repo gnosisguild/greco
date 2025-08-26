@@ -343,7 +343,7 @@ impl<let N: u32, let L: u32> Greco<N, L> {
 
     /// Generates Fiat-Shamir challenge values using a cryptographic sponge
     ///
-    /// The sponge absorbs all witness values and squeezes out random field elements
+    /// The sponge absorbs all witness values and squeezes out deterministic random field elements
     /// that will be used to evaluate polynomials for the Schwartz-Zippel lemma.
     ///
     /// # Returns
