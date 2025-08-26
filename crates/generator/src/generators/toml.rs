@@ -40,7 +40,6 @@ struct ProverBoundsTable {
 /// Parameter bounds to include in the TOML
 #[derive(Serialize)]
 struct ProverParamsTable {
-    tag: String,
     crypto: ProverCryptoTable,
     bounds: ProverBoundsTable,
 }
@@ -105,7 +104,6 @@ impl TomlGenerator {
     ) -> ProverTomlFormat {
         ProverTomlFormat {
             params: ProverParamsTable {
-                tag: bounds.tag.to_string(),
                 crypto: ProverCryptoTable {
                     q_mod_t: bounds.q_mod_t.to_string(),
                     qis: bounds.moduli.iter().map(|b| b.to_string()).collect(),

@@ -86,8 +86,6 @@ pub struct Params<let N: u32, let L: u32> {
     pub crypto: CryptographicParams<L>,
     /// Bound parameters for range checking
     pub bounds: BoundParams<L>,
-    /// Circuit tag for Fiat-Shamir transform
-    pub tag: Field,
 }
 
 impl<let N: u32, let L: u32> Params<N, L> {
@@ -106,7 +104,6 @@ impl<let N: u32, let L: u32> Params<N, L> {
         k1_up_bound: u64,
         qis: [Field; L],
         k0is: [Field; L],
-        tag: Field,
     ) -> Self {
         let crypto = CryptographicParams::new(q_mod_t, qis, k0is);
         let bounds = BoundParams::new(
@@ -122,7 +119,7 @@ impl<let N: u32, let L: u32> Params<N, L> {
             k1_up_bound,
         );
 
-        Params { crypto, bounds, tag }
+        Params { crypto, bounds }
     }
 
     /// Convenience method to access cryptographic parameters
@@ -282,31 +279,14 @@ impl<let N: u32, let L: u32> Greco<N, L> {
     /// * qi, k0i are constants from the cryptographic parameters
     /// * r1i, r2i, p1i, p2i are randomness polynomials for each i-th CRT basis.
     pub fn verify_correct_ciphertext_encryption(self) {
-        // Step 1: Perform binary constraint check
-        // TODO: this must be removed when moving the circuit to Enclave.
-        self.check_binary_constraint();
-
-        // Step 2: Perform range checks on all polynomial coefficients
+        // Step 1: Perform range checks on all polynomial coefficients
         self.check_range_bounds();
 
-        // Step 3: Generate Fiat-Shamir challenges
+        // Step 2: Generate Fiat-Shamir challenges
         let gammas = self.generate_challenge();
 
-        // Step 4: Verify encryption constraints using challenges
+        // Step 3: Verify encryption constraints using challenges
         self.check_encryption_constraints(gammas);
-    }
-
-    /// Performs binary constraint check on k1 polynomial
-    ///
-    /// Ensures that k1[N-1] * (q_mod_t - k1[N-1]) = 0
-    /// This constrains k1[N-1] to be either 0 or q_mod_t, ensuring proper message encoding
-    fn check_binary_constraint(self) {
-        let crypto_params = self.params.crypto_params();
-        assert(
-            0
-                == self.k1.coefficients[N - 1]
-                    * (crypto_params.q_mod_t - self.k1.coefficients[N - 1]),
-        );
     }
 
     /// Performs range checks on all polynomial coefficients
@@ -349,12 +329,25 @@ impl<let N: u32, let L: u32> Greco<N, L> {
     /// # Returns
     /// Vector of challenge values [gamma_0, gamma_1, ..., gamma_{2L-1}]
     fn generate_challenge(self) -> Vec<Field> {
-        // TODO: update to latest SAFE implementation when moving the circuit to Enclave.
         let inputs = self.payload::<(10 * N - 4) * L + 4 * N>();
-        let mut safe = SafeSponge::start([(10 * N - 4) * L + 4 * N, 2 * L], self.params.tag);
-        safe = safe.absorb(inputs);
-        let gammas = safe.squeeze();
-        safe.finish();
+
+        // Domain separator for Greco circuit - "Greco" in hex
+        let domain_separator = [
+            0x47, 0x72, 0x65, 0x63, 0x6f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+
+        // IO Pattern: ABSORB(input_size), SQUEEZE(2*L)
+        let input_size = (10 * N - 4) * L + 4 * N;
+        let io_pattern = [0x80000000 | input_size, 0x00000000 | (2 * L)];
+
+        let mut sponge = SafeSponge::start(io_pattern, domain_separator);
+        sponge.absorb(inputs);
+        let gammas = sponge.squeeze();
+        sponge.finish();
         gammas
     }
 

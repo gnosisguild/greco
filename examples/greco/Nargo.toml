@@ -1,5 +1,5 @@
 [package]
-name = "pk_encryption"
+name = "greco"
 type = "bin"
 authors = [""]
 

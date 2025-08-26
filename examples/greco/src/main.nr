@@ -1,4 +1,4 @@
-use circuits::crypto::pk_encryption::{Greco, Params};
+use circuits::crypto::greco::{Greco, Params};
 use circuits::math::polynomial::Polynomial;
 
 fn main(
