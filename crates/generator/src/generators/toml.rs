@@ -14,23 +14,34 @@ use std::path::{Path, PathBuf};
 /// Generator for Prover TOML files
 pub struct TomlGenerator;
 
-/// Parameter bounds to include in the TOML
+/// Cryptographic parameters section in TOML
 #[derive(Serialize)]
-struct ProverParamsTable {
+struct ProverCryptoTable {
+    q_mod_t: String,
+    qis: Vec<String>,
+    k0is: Vec<String>,
+}
+
+/// Bound parameters section in TOML
+#[derive(Serialize)]
+struct ProverBoundsTable {
     e_bound: String,
     u_bound: String,
-    k0is: Vec<String>,
     k1_low_bound: String,
     k1_up_bound: String,
     p1_bounds: Vec<String>,
     p2_bounds: Vec<String>,
     pk_bounds: Vec<String>,
-    q_mod_t: String,
-    qis: Vec<String>,
     r1_low_bounds: Vec<String>,
     r1_up_bounds: Vec<String>,
     r2_bounds: Vec<String>,
-    tag: String,
+}
+
+/// Parameter bounds to include in the TOML
+#[derive(Serialize)]
+struct ProverParamsTable {
+    crypto: ProverCryptoTable,
+    bounds: ProverBoundsTable,
 }
 
 /// Structure for individual vector tables in TOML
@@ -93,20 +104,23 @@ impl TomlGenerator {
     ) -> ProverTomlFormat {
         ProverTomlFormat {
             params: ProverParamsTable {
-                e_bound: bounds.e_bound.to_string(),
-                u_bound: bounds.u_bound.to_string(),
-                k0is: bounds.k0is.iter().map(|b| b.to_string()).collect(),
-                k1_low_bound: bounds.k1_low_bound.to_string(),
-                k1_up_bound: bounds.k1_up_bound.to_string(),
-                p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
-                p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
-                pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
-                q_mod_t: bounds.q_mod_t.to_string(),
-                qis: bounds.moduli.iter().map(|b| b.to_string()).collect(),
-                r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
-                r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
-                r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
-                tag: bounds.tag.to_string(),
+                crypto: ProverCryptoTable {
+                    q_mod_t: bounds.q_mod_t.to_string(),
+                    qis: bounds.moduli.iter().map(|b| b.to_string()).collect(),
+                    k0is: bounds.k0is.iter().map(|b| b.to_string()).collect(),
+                },
+                bounds: ProverBoundsTable {
+                    e_bound: bounds.e_bound.to_string(),
+                    u_bound: bounds.u_bound.to_string(),
+                    k1_low_bound: bounds.k1_low_bound.to_string(),
+                    k1_up_bound: bounds.k1_up_bound.to_string(),
+                    p1_bounds: bounds.p1_bounds.iter().map(|b| b.to_string()).collect(),
+                    p2_bounds: bounds.p2_bounds.iter().map(|b| b.to_string()).collect(),
+                    pk_bounds: bounds.pk_bounds.iter().map(|b| b.to_string()).collect(),
+                    r1_low_bounds: bounds.r1_low_bounds.iter().map(|b| b.to_string()).collect(),
+                    r1_up_bounds: bounds.r1_up_bounds.iter().map(|b| b.to_string()).collect(),
+                    r2_bounds: bounds.r2_bounds.iter().map(|b| b.to_string()).collect(),
+                },
             },
             ct0is: vecs
                 .ct0is

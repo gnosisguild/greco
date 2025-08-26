@@ -1,4 +1,4 @@
-use circuits::crypto::{Params, pk_encryption::BfvPkEncryptionCircuit};
+use circuits::crypto::greco::{Greco, Params};
 use circuits::math::polynomial::Polynomial;
 
 fn main(
@@ -16,7 +16,7 @@ fn main(
     p1is: [Polynomial<4095>; 1],
     p2is: [Polynomial<2047>; 1],
 ) {
-    let circuit = BfvPkEncryptionCircuit::new(
+    let circuit = Greco::new(
         params,
         pk0is,
         pk1is,
@@ -31,5 +31,5 @@ fn main(
         p1is,
         p2is,
     );
-    circuit.correct_encryption();
+    circuit.verify_correct_ciphertext_encryption();
 }

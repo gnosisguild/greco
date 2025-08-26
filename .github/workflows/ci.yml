@@ -62,7 +62,7 @@ jobs:
         run: nargo test
 
   noir-examples:
-    name: Noir PK Encryption Example
+    name: Noir Greco Example
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -71,12 +71,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust 1.85.0
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.85.0
-          override: true
-
       - name: Install Nargo
         uses: noir-lang/noirup@v0.1.4
         with:
@@ -84,7 +78,7 @@ jobs:
 
       - name: Install bbup (Barretenberg)
         run: |
-          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/master/barretenberg/bbup/install | bash
+          curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/refs/heads/next/barretenberg/bbup/install | bash
           echo "$HOME/.bb" >> $GITHUB_PATH
           export PATH="$HOME/.bb:$PATH"
           bbup
@@ -99,23 +93,23 @@ jobs:
           sudo swapon /swapfile
           sudo swapon --show
 
-      - name: Compile pk_encryption circuit
-        working-directory: examples/pk_encryption
+      - name: Compile Greco circuit
+        working-directory: examples/greco
         run: nargo compile
 
-      - name: Execute pk_encryption circuit
-        working-directory: examples/pk_encryption
+      - name: Execute Greco circuit
+        working-directory: examples/greco
         run: nargo execute
 
       - name: Generate proof
-        working-directory: examples/pk_encryption
-        run: bb prove -b ./target/pk_encryption.json -w ./target/pk_encryption.gz -o ./target
+        working-directory: examples/greco
+        run: bb prove -b ./target/greco.json -w ./target/greco.gz -o ./target
 
       - name: Generate verification key
-        working-directory: examples/pk_encryption
-        run: bb write_vk -b ./target/pk_encryption.json -o ./target
+        working-directory: examples/greco
+        run: bb write_vk -b ./target/greco.json -o ./target
 
       - name: Verify proof
-        working-directory: examples/pk_encryption
+        working-directory: examples/greco
         run: bb verify -k ./target/vk -p ./target/proof
         continue-on-error: false

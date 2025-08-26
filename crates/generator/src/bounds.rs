@@ -46,7 +46,6 @@ pub struct InputValidationBounds {
     pub p2_bounds: Vec<u64>,
     pub q_mod_t: BigInt,
     pub k0is: Vec<u64>,
-    pub tag: BigUint,
 }
 
 impl InputValidationBounds {
@@ -274,35 +273,6 @@ impl InputValidationBounds {
         let p1_bounds_u64: Vec<u64> = p1_bounds.iter().map(|b| b.to_u64().unwrap_or(0)).collect();
         let p2_bounds_u64: Vec<u64> = p2_bounds.iter().map(|b| b.to_u64().unwrap_or(0)).collect();
 
-        // Compute TAG using proper hashing
-        let mut hasher = Hasher::new();
-        hasher.update(params.degree().to_le_bytes().as_slice());
-        hasher.update(pk_bounds.len().to_le_bytes().as_slice());
-        hasher.update(
-            &pk_bounds_u64
-                .iter()
-                .flat_map(|num| num.to_le_bytes())
-                .collect::<Vec<u8>>(),
-        );
-        hasher.update(
-            &ctx.moduli()
-                .iter()
-                .flat_map(|num| num.to_le_bytes())
-                .collect::<Vec<u8>>(),
-        );
-        let _domain_separator = BigUint::from_bytes_le(hasher.finalize().as_bytes());
-
-        let size = (10 * params.degree() - 4) * pk_bounds.len() + 4 * params.degree();
-        let io_pattern = [
-            BigUint::from_usize(size).unwrap(),
-            BigUint::from_usize(2 * pk_bounds.len()).unwrap(),
-        ]
-        .map(|x| x.to_bytes_le());
-        hasher.update(io_pattern[0].as_slice());
-        hasher.update(io_pattern[1].as_slice());
-
-        let tag = BigUint::from_bytes_le(hasher.finalize().as_bytes()) % ctx.modulus().clone();
-
         Ok(InputValidationBounds {
             u: u_bound.clone(),
             e: e_bound.clone(),
@@ -329,7 +299,6 @@ impl InputValidationBounds {
             p2_bounds: p2_bounds_u64,
             q_mod_t: q_mod_t_mod_p,
             k0is,
-            tag,
         })
     }
 }
@@ -361,18 +330,6 @@ mod tests {
         // Test that computing at level 1 returns an error since we only have one modulus
         let bounds_l1 = InputValidationBounds::compute(&params, 1);
         assert!(bounds_l1.is_err());
-    }
-
-    #[test]
-    fn test_tag_computation_deterministic() {
-        let params = setup_test_params();
-
-        // Compute bounds twice
-        let bounds1 = InputValidationBounds::compute(&params, 0).unwrap();
-        let bounds2 = InputValidationBounds::compute(&params, 0).unwrap();
-
-        // TAG should be deterministic
-        assert_eq!(bounds1.tag, bounds2.tag);
     }
 
     #[test]
