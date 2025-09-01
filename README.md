@@ -4,6 +4,8 @@ A Rust workspace for generating and validating zero-knowledge proofs of correct 
 
 > This project is based on the research and implementation by the [Privacy & Scaling Explorations (PSE) team](https://github.com/privacy-scaling-explorations/greco). We extend our gratitude for their groundbreaking work on zero-knowledge proofs for BFV encryption correctness, detailed in their [research paper](https://eprint.iacr.org/2024/594).
 
+# ⚠️ We have moved Greco Noir library inside [enclave](https://github.com/gnosisguild/enclave) and scripts inside [zkfhe-toml-generator](https://github.com/gnosisguild/zkfhe-toml-generator/tree/main) - this repository is no longer maintained. ⚠️
+
 ## Crates
 
 ### `e3-greco-polynomial`
