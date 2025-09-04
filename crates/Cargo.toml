@@ -12,9 +12,9 @@ edition = "2021"
 [workspace.dependencies]
 polynomial = { package = "e3-greco-polynomial", path = "./polynomial" }
 generator = { package = "e3-greco-generator", path = "./generator" }
-fhe = { git = "https://github.com/gnosisguild/fhe.rs" }
-fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs" }
-fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git" }
+fhe = { git = "https://github.com/gnosisguild/fhe.rs", branch = "ry/allow-for-deterministic-rng" }
+fhe-traits = { git = "https://github.com/gnosisguild/fhe.rs", branch = "ry/allow-for-deterministic-rng" }
+fhe-math = { git = "https://github.com/gnosisguild/fhe.rs.git", branch = "ry/allow-for-deterministic-rng" }
 serde_json = "1.0.133"
 rand = "0.8.5"
 serde = { version = "1.0.208", features = ["derive"] }
